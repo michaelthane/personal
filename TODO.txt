@@ -1,10 +1,11 @@
 Task List:
 How to get the values from a dictionary and compare again desired string (value == "BALANCE_SHEET"
 
-
 Completed:
 
 Figure out how to work .html from hard drive
     Include 'html.parser' in BeautifulSOup object
     Path to .htm in Companies/<ticker>/...
-
+Get value from key-value pair
+    for i in {dict}:
+        ...
