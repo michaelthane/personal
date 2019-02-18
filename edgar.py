@@ -2,6 +2,7 @@ from selenium import webdriver
 import bs4
 import urllib3
 import fnmatch
+import time
 
 browser = webdriver.Chrome()
 browser.get('https://www.sec.gov')
@@ -30,9 +31,9 @@ filingSearchButton.click()
 
 http = urllib3.PoolManager()
 
-url = "https://www.sec.gov/cgi-bin/" \
-      "browse-edgar?action=getcompany&CIK=0000789019&type=10-k&dateb=&owner=exclude&count=40"
-response = http.request('GET', url)
+time.sleep(0.1)
+
+response = http.request('GET', browser.current_url)
 
 soup = bs4.BeautifulSoup(response.data, features="lxml")
 list1 = []
@@ -47,5 +48,28 @@ for i in list2:
     print(i)
 
 firstLink = list2[0]
+
+browser.get("https://www.sec.gov" + firstLink)
+
+### Do it again.
+
+time.sleep(0.1)
+
+response2 = http.request('GET', browser.current_url)
+
+soup2 = bs4.BeautifulSoup(response2.data, features="lxml")
+list3 = []
+list4 = []
+for link in soup2.findAll('a'):
+    list3.append(link.get("href"))
+    print(link.get("href"))
+
+list4 = fnmatch.filter(list3, '/Archives/*')
+
+print("list4: ")
+for i in list4:
+    print(i)
+
+firstLink = list4[0]
 
 browser.get("https://www.sec.gov" + firstLink)
