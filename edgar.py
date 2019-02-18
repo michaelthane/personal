@@ -1,7 +1,7 @@
 from selenium import webdriver
 import bs4
 import urllib3
-import urllib
+import fnmatch
 
 browser = webdriver.Chrome()
 browser.get('https://www.sec.gov')
@@ -20,8 +20,6 @@ filing = '10-k'
 filingType.send_keys(filing)
 
 inputElements = browser.find_elements_by_tag_name('input')
-# list1 = inputElements.get_attribute('type')
-
 
 for i in range(len(inputElements)):
 
@@ -30,12 +28,24 @@ for i in range(len(inputElements)):
 
 filingSearchButton.click()
 
-# tableFile = browser.find_element_by_class_name('tableFile2')
+http = urllib3.PoolManager()
 
+url = "https://www.sec.gov/cgi-bin/" \
+      "browse-edgar?action=getcompany&CIK=0000789019&type=10-k&dateb=&owner=exclude&count=40"
+response = http.request('GET', url)
 
-# This only works sometimes where the address will print out
-alpha = browser.find_element_by_partial_link_text('Documents')
-browser.get(alpha.get_attribute('href'))
+soup = bs4.BeautifulSoup(response.data, features="lxml")
+list1 = []
+list2 = []
+for link in soup.findAll('a'):
+    list1.append(link.get("href"))
+    # print(link.get("href"))
 
-# address = alpha.get_attribute('href')
-# print(address)
+list2 = fnmatch.filter(list1, '/Archives/*')
+
+for i in list2:
+    print(i)
+
+firstLink = list2[0]
+
+browser.get("https://www.sec.gov" + firstLink)
