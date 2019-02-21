@@ -1,0 +1,10 @@
+<PowerLimits>
+    <version>1.0</version>
+    <timestamp>Wed Feb 20 17:51:03 2019</timestamp>
+    <Block1>
+        <Value1>100.1</Value1>
+        <Value2>2.2</Value2>
+        <Value3>3.2</Value3>
+        <Value4>4.2</Value4>
+	</Block1>
+</PowerLimits>
