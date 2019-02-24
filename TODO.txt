@@ -1,9 +1,22 @@
 Task List:
-How to get the values from a dictionary and compare again desired string (value == "BALANCE_SHEET"
+1. Figure out what readings are needed from the 10-k
+2. Locate location of readings in documents
+    - Determine if getValues() will work on these.
+3. Create one streamlines method of storing all the obtained values.
+    - Could use pandas? could save as one big array (cpu and memory probably not great).
+4. See how well algo works on other tickers.
+    - Naming convention could differ
+5. Push to google sheets.
 
-Get necessary values from 10-k
+Notes:
+Efficiency is not great right now as the algorithm parses through the entire file rather than a focused region.
 
 Completed:
+
+Can open, create, write to, read from, etc. from google spreadsheet
+Can navigate to total assets and attain numeric values
+Wrote function to repeat this process based on what to search for
+
 
 Auto-nav to 10-k
 Figure out how to work .html from hard drive
