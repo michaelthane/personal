@@ -1,3 +1,0 @@
-Testing that this laptop can communicated through git.
-
--MT

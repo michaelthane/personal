@@ -1,40 +1,59 @@
+import AllFunctions as af
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import pprint
-from pprint import pprint
+import gspread_pandas
 import json
+from oauth2client.service_account import ServiceAccountCredentials
 import time
 
-# use creds to create a client to interact with the Google Drive API
+
+# Use creds to create a client to interact with the Google Drive API
 scope = ['https://spreadsheets.google.com/feeds',
          'https://www.googleapis.com/auth/drive']
 creds = ServiceAccountCredentials.from_json_keyfile_name('secret_key.json', scope)
 client = gspread.authorize(creds)
 
-# Find a workbook by name and open the first sheet
-# Make sure you use the right name here.
-sheet = client.open("AXP - American Express Company").sheet1
+# Create new spreadsheets only if they do not exist. Otherwise, open it.
+spreadsheetName = "MSFT - Microsoft Corporation"
+try:
+    print('NICE!!!')
+    sh = client.open(spreadsheetName)
+except gspread.exceptions.SpreadsheetNotFound:
+    print('yikes')
+    # Create spreadsheets in Google Drive.
+    sh = client.create(spreadsheetName)
+    time.sleep(1)
+finally:
+    print("No errors.")
 
-# Create spreadsheets in google drive
-sh = client.create('test sheet')
-time.sleep(1)
-
-# Share with yourself, or the sheet will remain inaccessible in this python script
+# Share with yourself, or the sheet will remain inaccessible in this python script.
 sh.share('mthane96@gmail.com',
          perm_type='user',
          role='writer')
 
-# Share with client_email from json, or authentication errors will occur
-with open('secret_key.json') as f:
-    data = json.load(f)
-
-sh.share(data["client_email"],
+# Share with client_email from json, or authentication errors will occur.
+sh.share(json.load(open('secret_key.json'))["client_email"],
          perm_type='user',
          role='writer')
 
-# Adding a sheet to spreadsheet
-worksheet = sh.add_worksheet(title='work1', rows='100', cols='10')
+# Add a worksheet to spreadsheet
+worksheetName = 'work1'
+try:
+    sh.add_worksheet(title=worksheetName, rows='10', cols='10')
+except gspread.exceptions.APIError:
+    deleteYN = input("A worksheet with that name already exists. Type 'y' to delete or 'n' to choose a new name: ")
+    if deleteYN == 'y':
+        sh.del_worksheet(worksheet=sh.worksheet(title=worksheetName))
+    elif deleteYN == 'n':
+        worksheetName = input('Enter new worksheet name: ')
+        sh.add_worksheet(title=worksheetName, rows='10', cols='10')
+    else:
+        pass
+finally:
+    print("No errors.")
 
-# Extract and print all of the values
-list_of_hashes = sheet.get_all_records()
-#pprint(list_of_hashes)
+df = af.parse10k('Companies/MSFT/msft-10k_20170630.htm')
+
+spread = gspread_pandas.Spread(json.load(open('secret_key.json'))["client_email"], spreadsheetName,
+                               config=json.load(open('secret_key.json')))
+
+spread.df_to_sheet(df=df, index=False, sheet='work1', start='A1', replace=True)

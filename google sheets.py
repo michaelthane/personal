@@ -5,10 +5,11 @@ import fnmatch
 import time
 
 browser = webdriver.Chrome()
-browser.get('https://accounts.google.com/signin/v2/identifier?service=wise&passive=1209600&continue=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2F%3Fusp%3Dmkt_sheets&followup=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2F%3Fusp%3Dmkt_sheets&ltmpl=sheets&flowName=GlifWebSignIn&flowEntry=ServiceLogin')
+browser.get('https://accounts.google.com/signin/v2/identifier?service=wise&passive=1209600&continue=https%3A%2F%2Fdocs'
+            '.google.com%2Fspreadsheets%2F%3Fusp%3Dmkt_sheets&followup=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2F'
+            '%3Fusp%3Dmkt_sheets&ltmpl=sheets&flowName=GlifWebSignIn&flowEntry=ServiceLogin')
 
 inputs = browser.find_elements_by_tag_name('input')
-
 email = 'mthane96@gmail.com'
 
 emailField = browser.find_element_by_name('identifier')
