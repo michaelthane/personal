@@ -101,5 +101,7 @@ response4 = http.request('GET', browser.current_url)
 
 soup4 = bs4.BeautifulSoup(response4.data, features="lxml")
 
-for fragment in soup4.findAll('a'):
+for fragment in soup4.findAll('hr'):
     print(fragment)
+
+# append tags into list until a page break is observed

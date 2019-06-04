@@ -1,0 +1,3 @@
+add chromedriver to PC path.
+
+pip freeze > requirements.txt
