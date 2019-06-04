@@ -6,7 +6,7 @@ import time
 import AllFunctions as af
 
 
-browser = webdriver.Chrome()
+browser = webdriver.Chrome("C:/Users/h217023/Desktop/Michael's Stuff/pycharm/projects/venv/Lib/site-packages/selenium/webdriver/chrome")
 browser.get('https://www.sec.gov')
 
 companyName = browser.find_element_by_id('company-name')
