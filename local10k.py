@@ -4,6 +4,7 @@ import bs4
 import time
 import pandas as pd
 from collections import OrderedDict
+from dateutil.parser import parse
 
 
 # Create list of file names in directory.
@@ -31,7 +32,7 @@ from collections import OrderedDict
 # example.close()
 
 # .join() concatenates each elem of an iterable to the string and returns the concatenated string.
-#soup = bs4.BeautifulSoup("".join(data), features='lxml')
+# soup = bs4.BeautifulSoup("".join(data), features='lxml')
 # soup = bs4.BeautifulSoup(open('example3.html'), 'html.parser')
 #
 # # Print ONLY the strings (without whitespace) from the descendants...
@@ -51,12 +52,12 @@ from collections import OrderedDict
 #         col_names.append(elem)
 #         pos += 1
 #
-#     if af.isNumber(elem) and pos < 3:
+#     if af.is_number(elem) and pos < 3:
 #         # These elems should be years like '2018' or '2017' or similar.
 #         table[elem] = []
 #         col_names.append(elem)
 #         pos += 1
-#     elif not af.isNumber(elem) and pos >= 3:
+#     elif not af.is_number(elem) and pos >= 3:
 #         # If it is not a number and not in exclusions list, it will ALWAYS go in the first column.
 #         table.get(col_names[0]).append(elem)
 #
@@ -71,7 +72,7 @@ from collections import OrderedDict
 #                 table.get(col_names[2]).append("-")
 #                 pos += 1
 #         pos += 1
-#     elif af.isNumber(elem) and pos > 3:
+#     elif af.is_number(elem) and pos > 3:
 #         # Put financial value in appropriate position.
 #         table.get(col_names[pos % 3]).append(elem)
 #         pos += 1
@@ -96,8 +97,8 @@ for line in msft:
         tags = ""
         page_num += 1
 end_time = time.time()
-print(end_time - start_time)
-print()
+# print(end_time - start_time)
+# print()
 
 
 # if any of the stripped strings equals index or table of contens or the like, store pages and numbers and break
@@ -109,7 +110,7 @@ soup = bs4.BeautifulSoup(report.get("Page 1"), 'html.parser')
 
 for elem in soup.stripped_strings:
     elem = elem.replace(u"\xa0", u" ")
-    if af.isNumber(elem):
+    if af.is_number(elem):
         table_of_contents[chapter] = int(elem)
         chapter = ""
     else:
@@ -121,7 +122,11 @@ table_of_contents.popitem()
 # Get page numbers of Item 8 and such from the table of contents.
 # print(pd.DataFrame(data=table_of_contents, index=[0]).transpose())
 # print()
-
+pd.set_option('display.max_columns', None)
 print(af.decimate_page(report.get("Page 53")))
 
+soup2 = bs4.BeautifulSoup(report.get("Page 53"), 'html.parser')
+
+# for elem in soup2.stripped_strings:
+#     print(elem)
 
