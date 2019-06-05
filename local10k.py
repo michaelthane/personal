@@ -79,4 +79,49 @@ from collections import OrderedDict
 # print(table)
 # print(pd.DataFrame(data=table))
 
-print(af.decimate_page('example3.html'))
+# print(af.decimate_page('example3.html'))
+
+msft = open('Companies/MSFT/msft-10k_20180630.htm')
+# print(example.readlines())
+
+report = dict()
+tags = ""
+page_num = 0
+start_time = time.time()
+for line in msft:
+    tags += line
+    # If line starts with hr (horizontal row), store string and move to next page.
+    if line[:4] == "<hr ":
+        report["Page " + str(page_num)] = tags
+        tags = ""
+        page_num += 1
+end_time = time.time()
+print(end_time - start_time)
+print()
+
+
+# if any of the stripped strings equals index or table of contens or the like, store pages and numbers and break
+
+table_of_contents = {}
+chapter = ""
+
+soup = bs4.BeautifulSoup(report.get("Page 1"), 'html.parser')
+
+for elem in soup.stripped_strings:
+    elem = elem.replace(u"\xa0", u" ")
+    if af.isNumber(elem):
+        table_of_contents[chapter] = int(elem)
+        chapter = ""
+    else:
+        chapter += elem + " "
+    # print(table_of_contents)
+    # time.sleep(3)
+table_of_contents.popitem()
+
+# Get page numbers of Item 8 and such from the table of contents.
+# print(pd.DataFrame(data=table_of_contents, index=[0]).transpose())
+# print()
+
+print(af.decimate_page(report.get("Page 53")))
+
+

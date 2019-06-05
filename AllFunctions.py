@@ -5,6 +5,7 @@ Description: This library contains any and all functions used throughout this ap
              This will improve readability and organization.
 """
 import bs4
+import os
 import pandas as pd
 
 
@@ -115,13 +116,16 @@ def parse10k(filePath):
 # Probably call this separately for table...
 def decimate_page(file_path, table={}, col_names=[]):
 
-    soup = bs4.BeautifulSoup(open(file_path), 'html.parser')
+    if len(file_path) < 260:  # MAX_PATH length
+        soup = bs4.BeautifulSoup(open(file_path), 'html.parser')
+    else:
+        soup = bs4.BeautifulSoup(file_path, 'html.parser')
 
     # Print ONLY the strings (without whitespace) from the descendants...
     pos = 0
     # table = {}
     # col_names = []
-    exclusions = ["millions", "$"]  # list of strings to be excluded
+    exclusions = ["millions", "$", "PART II", "Item 8"]  # list of strings to be excluded
     for elem in soup.stripped_strings:
 
         # Starting with the date, the first row will be the col names, except for the unit (in millions) and '$'
@@ -139,6 +143,9 @@ def decimate_page(file_path, table={}, col_names=[]):
             table[elem] = []
             col_names.append(elem)
             pos += 1
+        #elif (elem[0] == "$" or elem[:3] == "and") and len(elem) > 1:
+        #    # If description column has numeric values, include them in description.
+        #    table.get(col_names[0])[-1] += elem
         elif not isNumber(elem) and pos >= 3:
             # If it is not a number and not in exclusions list, it will ALWAYS go in the first column.
             table.get(col_names[0]).append(elem)
@@ -158,6 +165,13 @@ def decimate_page(file_path, table={}, col_names=[]):
             # Put financial value in appropriate position.
             table.get(col_names[pos % 3]).append(elem)
             pos += 1
+
+    if len(table.get(col_names[0])) > len(table.get(col_names[1])):
+        for i in range((len(table.get(col_names[0])) - len(table.get(col_names[1])))):
+            table.get(col_names[1]).append("-")
+    if len(table.get(col_names[0])) > len(table.get(col_names[2])):
+        for i in range((len(table.get(col_names[0])) - len(table.get(col_names[2])))):
+            table.get(col_names[2]).append("-")
 
     return pd.DataFrame(data=table)
 
