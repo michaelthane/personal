@@ -34,7 +34,7 @@ filingSearchButton.click()
 
 http = urllib3.PoolManager()
 
-time.sleep(0.1)
+time.sleep(0.5)
 
 response = http.request('GET', browser.current_url)
 
@@ -81,6 +81,9 @@ browser.get("https://www.sec.gov" + firstLink)
 time.sleep(1)
 
 response3 = http.request('GET', browser.current_url)
+
+# At this point, response3.data is the "html file" you need.
+
 
 soup3 = bs4.BeautifulSoup(response3.data, features="lxml")
 
