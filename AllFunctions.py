@@ -8,6 +8,7 @@ Description: This library contains any and all functions used throughout this ap
 import bs4
 from dateutil.parser import parse
 import pandas as pd
+import time
 
 
 # Determine if string is a number
@@ -20,8 +21,8 @@ def is_number(string):
     """
     exclusions = [',', '$', '(', ')']
     try:
-        for x in exclusions:
-            float(string.replace(x, ''))
+        #for x in exclusions:
+        float(string.replace(',', '').replace('(', ''))
         return True
     except ValueError:
         return False
@@ -76,14 +77,14 @@ def get_values(analyzingValue, tags):
     return return_list
 
 
-def parse10k(file_path):
+def parse10k(path):
     """
     Return a dataframe of values from input file.
     
-    :param file_path:  str, path of file.
+    :param path:  str, file path
     :return: pandas.DataFrame()
     """
-    soup = bs4.BeautifulSoup(open(file_path), 'html.parser')
+    soup = bs4.BeautifulSoup(open(path), 'html.parser')
 
     attribute_list = soup.select('tr')
 
@@ -146,27 +147,79 @@ def parse10k(file_path):
     return df
 
 
+def create_pages(path):
+    """
+    Return report after splitting by page break (<hr> -> horizontal row)
+
+    :param path: str, file path
+    :return: dict, {"Page #" : tags}
+    """
+    file = open(path)
+    report = dict()
+    tags = ""
+    page_num = 0
+    for line in file:
+        tags += line
+        # If line starts with "<hr " (horizontal row), store string and go to next page.
+        if line[:4] == "<hr ":
+            report["Page " + str(page_num)] = tags
+            tags = ""
+            page_num += 1
+    return report
+
+
+def get_table_of_contents(pages):
+
+    table_of_contents = {}
+    chapter = ""
+    soup = bs4.BeautifulSoup(pages.get("Page 1"), 'html.parser')
+
+    # If any of the stripped strings equals index or table of contents or the like, store pages and numbers and break
+    for elem in soup.stripped_strings:
+        elem = elem.replace(u"\xa0", u" ")
+        if is_number(elem):
+            table_of_contents[chapter] = int(elem)
+            chapter = ""
+        else:
+            chapter += elem + " "
+    table_of_contents.popitem()
+    return table_of_contents
+
+
+def display_table_of_contents(toc):
+    """
+    Return the table of contents dictionary as a transposed DataFrame.
+
+    :param toc: dict, {'Item #' : Real Page Number}
+    :return: pd.DataFrame().transpose()
+    """
+    return pd.DataFrame(data=toc, index=[0]).T
+
+
 # Return a dataframe of the financial data at file path.
 # Probably call this separately for table...
-def decimate_page(file_path, table={}, col_names=[]):
+def decimate_page(file_path, table, col_names):
 
     if len(file_path) < 260:  # MAX_PATH length
         soup = bs4.BeautifulSoup(open(file_path), 'html.parser')
     else:
         soup = bs4.BeautifulSoup(file_path, 'html.parser')
 
-    # Print ONLY the strings (without whitespace) from the descendants...
+    # Initialize
+    col_lens = []
+    flag = 0
+    longer_col = 0
+    num_cols = 0
     pos = 0
     # table = {}
     # col_names = []
-    exclusions = ["millions", "$", "PART II", "Item 8"]  # list of strings to be excluded
-    num_cols = 0  # THIS CANNOT BE HARDCODED!!!
-    col_lens = []
+
+    # list of strings to be excluded
+    # DO NOT DELETE "ITEM 8."; It is a special string with &nbsp; hidden in it.
+    exclusions = ["millions", "$", "PART II", "Item 8", "ITEM 8."]
     for elem in soup.stripped_strings:
 
-        # Starting with the date, the first row will be the col names, except for the unit (in millions) and '$'
-        #if elem in exclusions:
-        #    continue  # Go to the next loop iteration
+        # Starting with the date, the first row will be the col names; otherwise, skip that elem.
         if pos == 0:
             if not is_date(elem, fuzzy=True) or elem in exclusions:
                 continue
@@ -177,6 +230,7 @@ def decimate_page(file_path, table={}, col_names=[]):
                 num_cols += 1
                 pos += 1
         elif elem == "$" or elem == ")":
+            # How to not hard-code these exclusions?
             continue
         elif is_number(elem) and pos < num_cols + 1:
             # These elems should be years like '2018' or '2017' or similar.
@@ -184,9 +238,27 @@ def decimate_page(file_path, table={}, col_names=[]):
             col_names.append(elem)
             pos += 1
             num_cols += 1
-        # elif (elem[0] == "$" or elem[:3] == "and") and len(elem) > 1:
-        #    # If description column has numeric values, include them in description.
-        #    table.get(col_names[0])[-1] += elem
+        elif (elem[0] == "$" or elem[:3] == "and") and len(elem) > 1:
+            """
+            Balance sheet displays number of outstanding stocks.
+            The first outstanding number is seen as a legit number and will be put in the first year column.
+            When you see the next outstanding number, it will be preceded with "and", but everything is out of order.
+            """
+
+            # Check if year columns are different length.
+            # If so, then and elem was inserted into dict out of order.
+            for i in range(1, len(col_names) - 1):
+                flag = len(table.get(col_names[i])) - len(table.get(col_names[i+1]))
+                if flag != 0:
+                    longer_col = i
+
+            if elem[:3] == "and" and flag != 0:
+                table.get(col_names[0])[-1] += " " + table.get(col_names[longer_col]).pop() + elem
+                flag = 0
+                pos -= 1
+            else:
+                # If description column has numeric values, include them in description.
+                table.get(col_names[0])[-1] += " " + elem
         elif not is_number(elem) and pos >= num_cols:
 
             # If col_lens hasn't been created yet, create it.
@@ -205,42 +277,19 @@ def decimate_page(file_path, table={}, col_names=[]):
                     for j in range(col_lens[i] - 1):
                         table.get(col_names[i]).append("-")
                         pos += 1
-
-            # If an element has been added to a column out of order, fill remaining columns with hyphens.
-            # if (pos % num_cols) != 0 and (len(table.get(col_names[0])) > len(table.get(col_names[1])) or
-            #                               len(table.get(col_names[0])) > len(table.get(col_names[2]))):
-            #     for i in range((len(table.get(col_names[0])) - len(table.get(col_names[1]))) - 1):
-            #         table.get(col_names[1]).append("-")
-            #         pos += 1
-            #
-            #     for i in range((len(table.get(col_names[0])) - len(table.get(col_names[2]))) - 1):
-            #         table.get(col_names[2]).append("-")
-            #         pos += 1
             pos += 1
         elif is_number(elem) and pos > num_cols:
             # Put financial value in appropriate position.
+            if elem[0] == "(":
+                elem += ")"
             table.get(col_names[pos % num_cols]).append(elem)
             pos += 1
 
-    for pair in table:
-        print(len(table.get(pair)))
-    print()
-
+    # Adjust because of last row, which contains "refer to notes" and page number and only fills first year column.
     for i in range(1, len(col_names)):
         if len(table.get(col_names[0])) > len(table.get(col_names[i])):
             for j in range((len(table.get(col_names[0])) - len(table.get(col_names[i])))):
                 table.get(col_names[i]).append("-")
-
-    # if len(table.get(col_names[0])) > len(table.get(col_names[1])):
-    #     for i in range((len(table.get(col_names[0])) - len(table.get(col_names[1])))):
-    #         table.get(col_names[1]).append("-")
-    # if len(table.get(col_names[0])) > len(table.get(col_names[2])):
-    #     for i in range((len(table.get(col_names[0])) - len(table.get(col_names[2])))):
-    #         table.get(col_names[2]).append("-")
-
-    for key in table:
-        print(key)
-        print(len(table.get(key)))
 
     return pd.DataFrame(data=table)
 
