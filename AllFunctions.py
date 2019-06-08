@@ -8,6 +8,8 @@ Description: This library contains any and all functions used throughout this ap
 import bs4
 from dateutil.parser import parse
 import pandas as pd
+import re
+import time
 
 
 # Determine if string is a number
@@ -170,9 +172,16 @@ def create_pages(path):
 
 def get_table_of_contents(pages):
 
+    toc_page_number = ""
+    for key in pages:
+        # print(key)
+        if re.search("index", pages.get(key), flags=re.IGNORECASE):
+            toc_page_number = key
+            break
+
     table_of_contents = {}
     chapter = ""
-    soup = bs4.BeautifulSoup(pages.get("Page 2"), 'html.parser')
+    soup = bs4.BeautifulSoup(pages.get(toc_page_number), 'html.parser')
 
     # If any of the stripped strings equals index or table of contents or the like, store pages and numbers and break
     for elem in soup.stripped_strings:
@@ -184,6 +193,36 @@ def get_table_of_contents(pages):
             chapter += elem + " "
     table_of_contents.popitem()
     return table_of_contents
+
+
+def get_page_num(report, toc, pattern="Item 8"):
+    correct_page = False
+    max_check = 10
+    page_num = 0
+    for key in toc:
+        if re.search(pattern, key, flags=re.IGNORECASE):
+            page_num = toc.get(key)
+            break
+    page_num -= 2
+    for i in range(max_check):
+        current = 0
+        page_num += 1
+        soup = bs4.BeautifulSoup(report.get("Page " + str(page_num)), 'html.parser')
+        for elem in soup.stripped_strings:
+            # See if this is the right page.
+            if current < max_check:
+                if re.search(pattern, elem, flags=re.IGNORECASE) is not None or \
+                   re.search("financial", elem, flags=re.IGNORECASE) is not None or \
+                   re.search("statements", elem, flags=re.IGNORECASE) is not None:
+                    correct_page = True
+                    break
+            else:
+                break
+            current += 1
+        if correct_page:
+            break
+
+    return "Page " + str(page_num)
 
 
 def dict_to_df(dictionary, transpose=False):
@@ -199,7 +238,7 @@ def dict_to_df(dictionary, transpose=False):
 
 # Return a dataframe of the financial data at file path.
 # Probably call this separately for table...
-def decimate_page(file_path, table, col_names):
+def decimate_page(file_path):
 
     if len(file_path) < 260:  # MAX_PATH length
         soup = bs4.BeautifulSoup(open(file_path), 'html.parser')
@@ -212,17 +251,29 @@ def decimate_page(file_path, table, col_names):
     longer_col = 0
     num_cols = 0
     pos = 0
-    # table = {}
-    # col_names = []
+    skip = False
+    table = {}
+    col_names = []
 
     # list of strings to be excluded
     # DO NOT DELETE "ITEM 8."; It is a special string with &nbsp; hidden in it.
-    exclusions = ["millions", "$", "PART II", "Item 8", "ITEM 8."]
+    exclusions = ["millions", "PART II", "item", "FINANCIAL", "statement"]
+    #exclusions = ["millions", "PART II", "Item 8", "ITEM 8.", "item", "FINANCIAL", "ITEM 8. FINANCIAL STATE"]
     for elem in soup.stripped_strings:
 
         # Starting with the date, the first row will be the col names; otherwise, skip that elem.
         if pos == 0:
-            if not is_date(elem, fuzzy=True) or elem in exclusions:
+            for exclude in exclusions:
+                # print(exclude)
+                #print(re.search(exclude, elem, flags=re.IGNORECASE))
+                if re.search(exclude, elem, flags=re.IGNORECASE) is not None:
+                #    print("skip")
+                    skip = True
+                    break
+                else:
+                    skip = False
+                    continue
+            if skip or not is_date(elem, fuzzy=True):
                 continue
             else:
                 # First elem should be a date like 'June 30' or similar.
@@ -230,6 +281,16 @@ def decimate_page(file_path, table, col_names):
                 col_names.append(elem)
                 num_cols += 1
                 pos += 1
+            # print(elem)
+
+            # if not is_date(elem, fuzzy=True) or elem in exclusions:
+            #     continue
+            # else:
+            #     # First elem should be a date like 'June 30' or similar.
+            #     table[elem] = []  # key = elem : value = list
+            #     col_names.append(elem)
+            #     num_cols += 1
+            #     pos += 1
         elif elem == "$" or elem == ")":
             # How to not hard-code these exclusions?
             continue
@@ -296,6 +357,16 @@ def decimate_page(file_path, table, col_names):
 
 
 def combine_statements(dict1, dict2):
+    """
+    Combine two statements from different reports.
+    Check if the lowercase of strings are EXACTLY the same or if strings one index apart are EXACTLY the same.
+    If not, check if strings are MOSTLY the same (the LCS of the two strings equals at least HALF of the first string.
+    if not, check if strings one index apart are MOSTLY the same.
+
+    :param dict1: dict, main report
+    :param dict2: dict, auxiliary report
+    :return: dict, dict1 with unique pairs from dict2
+    """
 
     dict1_keys = []
     dict2_keys = []
@@ -305,41 +376,90 @@ def combine_statements(dict1, dict2):
         dict2_keys.append(key)
     dict1_first_col = dict1.get(dict1_keys[0])
     dict2_first_col = dict2.get(dict2_keys[0])
-    max_dif = 14
-    count = 0
+    pos1 = 0
+    pos2 = 0
+    buffer = 2  # Used on very specific use cases.
     for key in dict2:
         if not is_number(key):
-            # Don't look at date key ... "June 30," or similar.
+            """Don't look at date key ... "June 30," or similar."""
             continue
         elif key in dict1:
-            # Year is already included in dict1
+            """Year is already included in dict1"""
             continue
         else:
-            print("key: ")
-            print(key)
-            # Never before seen year. Edit array before putting pair in dict1.
-            # Compare elements in column 0 from dict1 with elems in column 0 from dict2.
-            for i in range(1, len(dict1_first_col)):
-                # Check if strings are MOSTLY the same. Assume dict1 is always right...
-                if len(dict1_first_col[i]) - lcs(dict1_first_col[i], dict2_first_col[i-count]) > max_dif:
-                    # Not similar enough.
-                    if len(dict1_first_col[i+1]) - lcs(dict1_first_col[i+1], dict2_first_col[i]) > max_dif:
-                        print("before: ")
-                        print(len(dict2.get(key)))
-                        print("i: ")
-                        print(i)
-                        dict2.get(key).insert(i, "-")
-                        print("after: ")
-                        print(len(dict2.get(key)))
-                        print()
-                        # count+=1
-                    elif len(dict2_first_col[i+1]) - lcs(dict1_first_col[i], dict2_first_col[i+1]) > max_dif:
-                        # Delete element at i
-                        print("pop: " + str(i))
-                        dict2.get(key).pop(i)
+            """Never before seen year. Edit dict2 array to match dict1 before putting pair in dict1.
+            Compare elements in column 0 from dict1 with elems in column 0 from dict2."""
+            # print("key: " + key)
+            while pos1 < len(dict1_first_col) and pos2 < len(dict2_first_col) - 1:
+                """Check if strings are exactly the same. dict1 is always right."""
+                # print()
+                # print("length of dict1: " + str(len(dict1_first_col)))
+                # print("length of dict2 col 0: " + str(len(dict2_first_col)))
+                # print("length of dict2: " + str(len(dict2.get(key))))
+                # print("pos1: " + str(pos1) + " | " + "pos2: " + str(pos2))
+                # print(dict1_first_col[pos1] + "|vs|" + dict2_first_col[pos2])
+                # print("difference: " +
+                #       str(len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2])))
+                # print("half of dict1: " + str(len(dict1_first_col[pos1]) / 2))
+                # print("different? " + str(len(dict1_first_col[pos1]) -
+                #                           lcs(dict1_first_col[pos1], dict2_first_col[pos2]) >
+                #                           len(dict1_first_col[pos1]) / 2))
+                if dict1_first_col[pos1].lower() == dict2_first_col[pos2].lower():
+                    # print("Strings are EXACTLY equal.")
+                    pos1 += 1
+                    pos2 += 1
+                elif dict1_first_col[pos1].lower() == dict2_first_col[pos2 + 1].lower():
+                    # """Delete value at pos2 in dict2."""
+                    # print("dict1[i] equals dict2[i+1]")
+                    print("pop: " + str(pos2))
+                    dict2.get(key).pop(pos2)
+                    pos2 += 1
+                elif dict1_first_col[pos1 + 1].lower() == dict2_first_col[pos2].lower():
+                    """Insert "-" at pos2 in dict2."""
+                    # print("dict1[i+1] equals dict2[i]")
+                    # print('inserting "-" at ' + str(pos2) + ' in dict2')
+                    dict2.get(key).insert(pos1, "-")
+                    pos1 += 1
+                elif len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2]) > \
+                        len(dict1_first_col[pos1])/2:
+                    """Not similar enough."""
+                    # print("Not similar enough")
+                    # try:
+                    for i in range(1, len(dict1_first_col) - pos1):
+                        """ASSUME that a matching string WILL be found at some index.
+                        Matching defined as: differences being less than half of pivot string.
+                        If matching string is not found, delete pos2 from dict2"""
+                        # print(i)
+                        # print("difference 1: " +
+                        #       str(len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2])))
+                        # print("half of dict1: " + str(len(dict1_first_col[pos1+i]) / 2))
+                        # print("difference 2: " +
+                        #       str(len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i])))
+                        # print("half of dict2: " + str(len(dict2_first_col[pos2+i]) / 2))
+
+                        if len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2]) < \
+                                len(dict1_first_col[pos1+i])/2 - buffer:
+                            """Insert element into dict2 at pos1."""
+                            for j in range(i):
+                                dict2.get(key).insert(pos1, "-")
+                            pos1 += i
+                            break
+                        elif len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i]) < \
+                                len(dict2_first_col[pos2+i])/2 - buffer:
+                            """Delete element from dict2 at pos2."""
+                            for k in range(i):
+                                dict2.get(key).pop(pos2)
+                            pos2 += i
+                            break
+                    # except IndexError:
+                    #     # print("lolololol")
+                    #     dict2.get(key).insert(pos2, "-")
+                    #     pos2 += 1
                 else:
-                    # Almost identical.
-                    continue
+                    """Strings are MOSTLY the same."""
+                    # print("longest common subsequence of the two strings is ALMOST as long as dict[i]")
+                    pos1 += 1
+                    pos2 += 1
             dict1[key] = dict2.get(key)
 
     return dict1
@@ -347,12 +467,14 @@ def combine_statements(dict1, dict2):
 
 def lcs(s1, s2):
     """
-    Longest Common Subsequence (DP) from GeeksforGeeks
+    Longest Common Sub-sequence (DP) from GeeksforGeeks
 
     :param s1: str
     :param s2: str
-    :return: int, length of longest common subsequence
+    :return: int, length of longest common sub-sequence
     """
+    s1 = s1.lower()
+    s2 = s2.lower()
     # find the length of the strings
     m = len(s1)
     n = len(s2)
