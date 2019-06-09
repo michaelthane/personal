@@ -24,7 +24,8 @@ defensive investor's portfolio:
 4. No earning deficit in the past 10 years
 
 5. Ten-year growth of at least 1/3 in per-share earnings (can also be 50% or 100% for spiciness)
-    - Example: If looking at companies from 1993 to 2002, average EPS from 1991-1993 and compare to average EPS from 2000-2002
+    - Example: If looking at companies from 1993 to 2002, average EPS from 1991-1993 and compare to average EPS from 
+    2000-2002
 
 6. Price of stock no more than 1.5 times net asset value (NAV) (P/B Ratio)
     - Value of company can also come from franchises, brand name, patents, trademarks
@@ -41,12 +42,15 @@ The above requirements exclude companies that are:
 
 ## Caveats
 
-[XBRL Parser by tooksoi](https://github.com/tooksoi/ScraXBRL)
+[XBRL Parser by tooksoi](https://github.com/tooksoi/ScraXBRL). His or her project is for XBRL documents.
 
 This project focuses on getting financial data from .htm and .html documents. On SEC's EDGAR database, XBRL douments 
 are typically only available for a company's latest 10 years.
 
 Package highlights include Beautifulsoup, re, pandas, and selenium.
+
+Future steps would also get financial data from .txt documents, which is the only available form in 1994 and some years 
+after.
 
 ## Order of Operations
 
