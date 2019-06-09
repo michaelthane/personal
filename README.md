@@ -1,11 +1,11 @@
-#Automation of Intelligent Investing
+# Automation of Intelligent Investing
 
 The Intelligent Investor, by Benjamin Graham, teaches investors a method of financial analysis focused on low risks and
 high returns. This sounds like an obvious method that most investors already employ; however, the process of acquiring
 financial data can be time consuming and cumbersome for the average person. The purpose of this project is to automate
 this process so that even an average person can be an intelligent investor.
 
-##<b> The Seven </b>
+## The Seven
 
 According to Benjamin Graham, the following are seven statistical requirements a company must meet for inclusion in a 
 defensive investor's portfolio:
@@ -58,7 +58,7 @@ Package highlights include Beautifulsoup, re, pandas, and selenium.
     - This CAN be done in Tableau via google sheets.
 5. If met, further research is warranted. Otherwise, disregard and DO NOT waste time.
 
-##<b> Installation </b>
+## Installation
 
 add chromedriver to PC path.
 
