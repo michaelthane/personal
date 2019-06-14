@@ -6,9 +6,16 @@ from urllib.request import *
 import fnmatch
 import time
 import requests
+from requests.auth import HTTPProxyAuth
+import os
+import pandas as pd
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 1000)
+pd.set_option('display.max_rows', None)
 
 # Initialize
-ticker = 'msft'
+ticker = 'wmt'
 filing = '10-k'
 
 
@@ -38,7 +45,23 @@ filingSearchButton.click()
 
 http = urllib3.PoolManager()
 
+# default_headers = urllib3.make_headers(proxy_basic_auth="h217023:Mt511217!!!!")
+
+# http = urllib3.ProxyManager('https://localhost:80/')
+
+# proxy = {'http': 'http://34.7.124.189:139'}
+
+#os.environ['NO_PROXY'] = 'sec.gov'
+
+# session = requests.session()
+# session.trust_env = False
+#response = requests.get('www.sec.gov' + browser.current_url)
+
 time.sleep(0.5)
+
+# response = requests.get(browser.current_url, proxy)
+#
+# soup = bs4.BeautifulSoup(response.text, features="lxml")
 
 response = http.request('GET', browser.current_url)
 
@@ -102,20 +125,20 @@ start = time.time()
 
 temp = af.create_pages(soup3)
 
-print("DONE" + "\n")
+print("DONE")
 
-print(af.dict_to_df(temp, transpose=True))
+# print(af.dict_to_df(temp, transpose=True))
 print()
 
 print("Execution time: " + str(time.time() - start))
 print()
 
 toc = af.get_table_of_contents(temp)
-print(af.dict_to_df(toc, transpose=True))
+# print(af.dict_to_df(toc, transpose=True))
 print()
 
 pn = af.get_page_num(temp, toc)
-print("Item 8 is page number: " +str(pn))
+print("Item 8 is page number: " + str(pn))
 print()
 
 statement = af.decimate_page(temp.get("Page " + str(pn)))

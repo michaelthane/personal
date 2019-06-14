@@ -6,6 +6,7 @@ import os
 import urllib
 from bs4 import BeautifulSoup as BS
 
+
 class GetFilings:
 
 	def __init__(self, ticker_symbol):

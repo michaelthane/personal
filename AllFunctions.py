@@ -164,7 +164,9 @@ def create_pages(path):
     elif len(path) < 260:  # MAX_PATH length
         soupy = False
         if os.path.exists(path):
-            file = open(path)
+            # file = open(path)
+            file = bs4.BeautifulSoup(open(path), 'html.parser')
+            soupy = True
         else:
             return "Neither path nor html"
     else:
@@ -175,6 +177,7 @@ def create_pages(path):
     page_num = 0
     if not soupy:
         for line in file:
+            print(line)
             tags += line
             # If line starts with "<hr " (horizontal row), store string and go to next page.
             if line[:4] == "<hr " or line[:16] == '</p><hr size="3"':  # ACTION: This really shouldn't be hard-coded...
@@ -184,6 +187,7 @@ def create_pages(path):
     else:
         for line in file.find_all():
             line = str(line)
+            # print(line)
             tags += line
             # If line starts with "<hr " (horizontal row), store string and go to next page.
             if re.match("<hr ", line, flags=re.IGNORECASE) is not None or \
@@ -202,32 +206,39 @@ def get_table_of_contents(pages):
         if key == "Page 0":
             # Always skip the first page.
             continue
-        if re.search("index", pages.get(key), flags=re.IGNORECASE):
+        if re.search("index", pages.get(key), flags=re.IGNORECASE) or \
+                re.search("table of contents", pages.get(key), flags=re.IGNORECASE):
             toc_page_number = key
             break
 
     table_of_contents = {}
     chapter = ""
     soup = bs4.BeautifulSoup(pages.get(toc_page_number), 'html.parser')
-
+    prev = 0
     # If any of the stripped strings equals index or table of contents or the like, store pages and numbers and break
     for elem in soup.stripped_strings:
         elem = elem.replace(u"\xa0", u" ")
         if is_number(elem):
-            table_of_contents[chapter] = int(elem)
-            chapter = ""
+            if int(elem) >= prev:
+                prev = int(elem)
+                table_of_contents[chapter] = int(elem)
+                chapter = ""
+            else:
+                break
         else:
             chapter += elem + " "
     table_of_contents.popitem()
     return table_of_contents
 
 
-def get_page_num(report, toc, pattern="Item 8"):
+def get_page_num(report, toc):
     correct_page = False
     max_check = 10
     page_num = 0
     for key in toc:
-        if re.search(pattern, key, flags=re.IGNORECASE):
+        if re.search("Item 8", key, flags=re.IGNORECASE) or \
+                re.search("statements of income", key, flags=re.IGNORECASE) or \
+                re.search("income statement", key, flags=re.IGNORECASE):
             page_num = toc.get(key)
             break
     page_num -= 2
@@ -238,9 +249,9 @@ def get_page_num(report, toc, pattern="Item 8"):
         for elem in soup.stripped_strings:
             # See if this is the right page.
             if current < max_check:
-                if re.search(pattern, elem, flags=re.IGNORECASE) is not None or \
-                   re.search("financial", elem, flags=re.IGNORECASE) is not None or \
-                   re.search("statements", elem, flags=re.IGNORECASE) is not None:
+                #
+                if re.search("Item 8", elem, flags=re.IGNORECASE) is not None or \
+                        re.search("income", elem, flags=re.IGNORECASE) is not None:
                     correct_page = True
                     break
             else:
@@ -284,20 +295,25 @@ def decimate_page(path):
     skip = False
     table = {}
     col_names = []
+    skips = 0
 
     # list of strings to be excluded
     # DO NOT DELETE "ITEM 8."; It is a special string with &nbsp; hidden in it.
     exclusions = ["millions", "PART II", "item", "FINANCIAL", "statement"]
-    #exclusions = ["millions", "PART II", "Item 8", "ITEM 8.", "item", "FINANCIAL", "ITEM 8. FINANCIAL STATE"]
+    # exclusions = ["millions", "PART II", "Item 8", "ITEM 8.", "item", "FINANCIAL", "ITEM 8. FINANCIAL STATE"]
     for elem in soup.stripped_strings:
+
+        # Prevent document from repeating...
+        if len(col_names) > 0 and elem == col_names[0]:
+            break
 
         # Starting with the date, the first row will be the col names; otherwise, skip that elem.
         if pos == 0:
             for exclude in exclusions:
                 # print(exclude)
-                #print(re.search(exclude, elem, flags=re.IGNORECASE))
+                # print(re.search(exclude, elem, flags=re.IGNORECASE))
                 if re.search(exclude, elem, flags=re.IGNORECASE) is not None:
-                #    print("skip")
+                    # print("skip")
                     skip = True
                     break
                 else:
@@ -321,7 +337,7 @@ def decimate_page(path):
             #     col_names.append(elem)
             #     num_cols += 1
             #     pos += 1
-        elif elem == "$" or elem == ")":
+        elif elem == "$" or elem == ")" or re.search("millions", elem, flags=re.IGNORECASE) is not None:
             # How to not hard-code these exclusions?
             continue
         elif is_number(elem) and pos < num_cols + 1:
@@ -422,50 +438,50 @@ def combine_statements(dict1, dict2):
             # print("key: " + key)
             while pos1 < len(dict1_first_col) and pos2 < len(dict2_first_col) - 1:
                 """Check if strings are exactly the same. dict1 is always right."""
-                # print()
-                # print("length of dict1: " + str(len(dict1_first_col)))
-                # print("length of dict2 col 0: " + str(len(dict2_first_col)))
-                # print("length of dict2: " + str(len(dict2.get(key))))
-                # print("pos1: " + str(pos1) + " | " + "pos2: " + str(pos2))
-                # print(dict1_first_col[pos1] + "|vs|" + dict2_first_col[pos2])
-                # print("difference: " +
-                #       str(len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2])))
-                # print("half of dict1: " + str(len(dict1_first_col[pos1]) / 2))
-                # print("different? " + str(len(dict1_first_col[pos1]) -
-                #                           lcs(dict1_first_col[pos1], dict2_first_col[pos2]) >
-                #                           len(dict1_first_col[pos1]) / 2))
+                print()
+                print("length of dict1: " + str(len(dict1_first_col)))
+                print("length of dict2 col 0: " + str(len(dict2_first_col)))
+                print("length of dict2: " + str(len(dict2.get(key))))
+                print("pos1: " + str(pos1) + " | " + "pos2: " + str(pos2))
+                print(dict1_first_col[pos1] + "|vs|" + dict2_first_col[pos2])
+                print("difference: " +
+                      str(len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2])))
+                print("half of dict1: " + str(len(dict1_first_col[pos1]) / 2))
+                print("different? " + str(len(dict1_first_col[pos1]) -
+                                          lcs(dict1_first_col[pos1], dict2_first_col[pos2]) >
+                                          len(dict1_first_col[pos1]) / 2))
                 if dict1_first_col[pos1].lower() == dict2_first_col[pos2].lower():
-                    # print("Strings are EXACTLY equal.")
+                    print("Strings are EXACTLY equal.")
                     pos1 += 1
                     pos2 += 1
                 elif dict1_first_col[pos1].lower() == dict2_first_col[pos2 + 1].lower():
-                    # """Delete value at pos2 in dict2."""
-                    # print("dict1[i] equals dict2[i+1]")
-                    # print("pop: " + str(pos2))
+                    """Delete value at pos2 in dict2."""
+                    print("dict1[i] equals dict2[i+1]")
+                    print("pop: " + str(pos2))
                     dict2.get(key).pop(pos2)
                     pos2 += 1
                 elif dict1_first_col[pos1 + 1].lower() == dict2_first_col[pos2].lower():
                     """Insert "-" at pos2 in dict2."""
-                    # print("dict1[i+1] equals dict2[i]")
-                    # print('inserting "-" at ' + str(pos2) + ' in dict2')
+                    print("dict1[i+1] equals dict2[i]")
+                    print('inserting "-" at ' + str(pos2) + ' in dict2')
                     dict2.get(key).insert(pos1, "-")
                     pos1 += 1
                 elif len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2]) > \
                         len(dict1_first_col[pos1])/2:
                     """Not similar enough."""
-                    # print("Not similar enough")
+                    print("Not similar enough")
                     # try:
                     for i in range(1, len(dict1_first_col) - pos1):
                         """ASSUME that a matching string WILL be found at some index.
                         Matching defined as: differences being less than half of pivot string.
                         If matching string is not found, delete pos2 from dict2"""
-                        # print(i)
-                        # print("difference 1: " +
-                        #       str(len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2])))
-                        # print("half of dict1: " + str(len(dict1_first_col[pos1+i]) / 2))
-                        # print("difference 2: " +
-                        #       str(len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i])))
-                        # print("half of dict2: " + str(len(dict2_first_col[pos2+i]) / 2))
+                        print(i)
+                        print("difference 1: " +
+                              str(len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2])))
+                        print("half of dict1: " + str(len(dict1_first_col[pos1+i]) / 2))
+                        print("difference 2: " +
+                              str(len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i])))
+                        print("half of dict2: " + str(len(dict2_first_col[pos2+i]) / 2))
 
                         if len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2]) < \
                                 len(dict1_first_col[pos1+i])/2 - buffer:
@@ -487,7 +503,7 @@ def combine_statements(dict1, dict2):
                     #     pos2 += 1
                 else:
                     """Strings are MOSTLY the same."""
-                    # print("longest common subsequence of the two strings is ALMOST as long as dict[i]")
+                    print("longest common subsequence of the two strings is ALMOST as long as dict[i]")
                     pos1 += 1
                     pos2 += 1
             dict1[key] = dict2.get(key)
@@ -653,11 +669,13 @@ def get_all_finances(links):
     equity_combo = {}
 
     for link in links:
-
+        # link = bs4.BeautifulSoup(link, 'html.parser')
         report = create_pages(link)
 
         toc = get_table_of_contents(report)
         pn = get_page_num(report, toc)
+
+        # Check that pn is net income page
 
         # Assume that pn + 1 is comprehensive income statement
         # if its not there add 1, 2, 3 respectively instead.

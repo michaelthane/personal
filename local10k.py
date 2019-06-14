@@ -136,57 +136,69 @@ start = time.time()
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
+pd.set_option('display.max_rows', None)
 
 links = []
 statements = []
 combo = {}
 
-links.append('Companies/MSFT/msft-10k_20180630.htm')
-links.append('Companies/MSFT/2017_10-k.html')
-links.append('Companies/MSFT/2016_10-k.html')
-links.append('Companies/MSFT/2015_10-k.html')
-links.append('Companies/MSFT/2014_10-k.html')
+# links.append('Companies/MSFT/msft-10k_20180630.htm')
+# links.append('Companies/MSFT/2017_10-k.html')
+# links.append('Companies/MSFT/2016_10-k.html')
+# links.append('Companies/MSFT/2015_10-k.html')
+# links.append('Companies/MSFT/2014_10-k.html')
 # links.append('Companies/MSFT/2013_10-k.html')
 
+links.append('Companies/WMT/2018_10-k.html')
+links.append('Companies/WMT/2017_10-k.html')
+links.append('Companies/WMT/2016_10-k_aux.html')
+# links.append('Companies/MSFT/2015_10-k.html')
+# links.append('Companies/MSFT/2014_10-k.html')
+# links.append('Companies/MSFT/2013_10-k.html')
 
-# for link in links:
-#
-#     report = af.create_pages(link)
-#
-#     toc = af.get_table_of_contents(report)
-#     pn = af.get_page_num(report, toc)
-#
-#     statement = af.decimate_page(report.get("Page " + str(pn)))
-#     # print("\n" + "NEXT STATEMENT" + "\n")
-#     # print(af.dict_to_df(statement))
-#     statements.append(statement)
-#     if len(statements) == 2:
-#         combo = af.combine_statements(statements[0], statements[1])
-#         # print("\n" + "COMBO COMING" + "\n")
-#         # print(af.dict_to_df(combo))
-#     elif len(statements) > 2:
-#         combo = af.combine_statements(combo, statements[-1])
-#         # print("\n" + "COMBO COMING" + "\n")
-#         # print(af.dict_to_df(combo))
-#     else:
-#         continue
+for link in links:
 
-all_finances = af.get_all_finances(links)
-print()
-print("INCOME")
-print()
-print(af.dict_to_df(all_finances[0]))
-print()
-print("BALANCE SHEET")
-print()
-print(af.dict_to_df(all_finances[1]))
-print()
-print("CASH FLOW")
-print()
-print(af.dict_to_df(all_finances[2]))
-print()
-print("EQUITY")
-print()
-print(af.dict_to_df(all_finances[3]))
-print()
-print("Execution time: " + str(time.time() - start))
+    # soup = bs4.BeautifulSoup(open(link), 'html.parser')
+    #
+    # for elem in soup.find_all():
+    #     print(elem)
+
+    report = af.create_pages(link)
+
+    toc = af.get_table_of_contents(report)
+    pn = af.get_page_num(report, toc)
+
+    statement = af.decimate_page(report.get("Page " + str(pn)))
+    print("\n" + "NEXT STATEMENT" + "\n")
+    print(af.dict_to_df(statement))
+    statements.append(statement)
+    if len(statements) == 2:
+        combo = af.combine_statements(statements[0], statements[1])
+        print("\n" + "COMBO COMING" + "\n")
+        print(af.dict_to_df(combo))
+    elif len(statements) > 2:
+        combo = af.combine_statements(combo, statements[-1])
+        print("\n" + "COMBO COMING" + "\n")
+        print(af.dict_to_df(combo))
+    else:
+        continue
+
+# all_finances = af.get_all_finances(links)
+# print()
+# print("INCOME")
+# print()
+# print(af.dict_to_df(all_finances[0]))
+# print()
+# print("BALANCE SHEET")
+# print()
+# print(af.dict_to_df(all_finances[1]))
+# print()
+# print("CASH FLOW")
+# print()
+# print(af.dict_to_df(all_finances[2]))
+# print()
+# print("EQUITY")
+# print()
+# print(af.dict_to_df(all_finances[3]))
+# print()
+# print("Execution time: " + str(time.time() - start))

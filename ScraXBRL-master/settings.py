@@ -74,7 +74,7 @@ XBRL_DICT_PATH = "{0}/{1}/{2}/{3}".format(MAIN_SCRAPE_LIST_DIR,
 #####################
 GET_XML = True
 GET_TXT = False
-GET_HTML = False
+GET_HTML = True
 GET_XL = False
 
 #####################
