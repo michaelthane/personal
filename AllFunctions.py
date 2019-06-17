@@ -164,37 +164,64 @@ def create_pages(path):
     elif len(path) < 260:  # MAX_PATH length
         soupy = False
         if os.path.exists(path):
-            # file = open(path)
-            file = bs4.BeautifulSoup(open(path), 'html.parser')
-            soupy = True
+            file = open(path)
+            # file = bs4.BeautifulSoup(open(path), 'html.parser')
+            # file = bs4.BeautifulSoup(open(path), features='lxml')
+            soupy = False
         else:
             return "Neither path nor html"
     else:
         file = path
         soupy = True
-    report = dict()
-    tags = ""
-    page_num = 0
-    if not soupy:
-        for line in file:
-            print(line)
-            tags += line
-            # If line starts with "<hr " (horizontal row), store string and go to next page.
-            if line[:4] == "<hr " or line[:16] == '</p><hr size="3"':  # ACTION: This really shouldn't be hard-coded...
-                report["Page " + str(page_num)] = tags
-                tags = ""
-                page_num += 1
-    else:
-        for line in file.find_all():
-            line = str(line)
-            # print(line)
-            tags += line
-            # If line starts with "<hr " (horizontal row), store string and go to next page.
-            if re.match("<hr ", line, flags=re.IGNORECASE) is not None or \
-                    re.match('</p><hr size="3"', line, flags=re.IGNORECASE) is not None:
-                report["Page " + str(page_num)] = tags
-                tags = ""
-                page_num += 1
+
+    while True:
+        report = dict()
+        tags = ""
+        page_num = 0
+        if not soupy:
+            for line in file:
+                # print(line)
+                tags += line
+                # If line starts with "<hr " (horizontal row), store string and go to next page.
+                # if line[:4] == "<hr " or line[:16] == '</p><hr size="3"':  # ACTION: This really shouldn't be hard-coded...
+                #     report["Page " + str(page_num)] = tags
+                #     tags = ""
+                #     page_num += 1
+                if re.search("page-break", line, flags=re.IGNORECASE) is not None:
+                    report["Page " + str(page_num)] = tags
+                    tags = ""
+                    page_num += 1
+        else:
+            for line in file.find_all():
+                # print(line)
+                line = str(line)
+                # print(line)
+                tags += line
+                # If line starts with "<hr " (horizontal row), store string and go to next page.
+                # if re.search("<p Style='page-break-before:always'>", line, flags=re.IGNORECASE) is not None:
+                #     report["Page " + str(page_num)] = tags
+                #     tags = ""
+                #     page_num += 1
+                # if re.match("<hr width", line, flags=re.IGNORECASE) is not None or \
+                #    re.match('<hr size="1"', line, flags=re.IGNORECASE) is not None:
+                #     continue
+                if re.match("<hr ", line, flags=re.IGNORECASE) is not None:
+                    report["Page " + str(page_num)] = tags
+                    tags = ""
+                    page_num += 1
+                elif re.match('</p><hr size="3"', line, flags=re.IGNORECASE) is not None:
+                    report["Page " + str(page_num)] = tags
+                    tags = ""
+                    page_num += 1
+                # elif re.match('<hr  size="3"', line, flags=re.IGNORECASE) is not None:
+                #     report["Page " + str(page_num)] = tags
+                #     tags = ""
+                #     page_num += 1
+        if len(report) > 1:
+            break
+        else:
+            file = bs4.BeautifulSoup(open(path), 'html.parser')
+            soupy = True
     return report
 
 
@@ -403,6 +430,82 @@ def decimate_page(path):
 
 
 def combine_statements(dict1, dict2):
+    """
+    Combine two statements from different reports.
+    Check if the lowercase of strings are EXACTLY the same or if strings one index apart are EXACTLY the same.
+    If not, check if strings are MOSTLY the same (the LCS of the two strings equals at least HALF of the first string.
+    if not, check if strings one index apart are MOSTLY the same.
+
+    :param dict1: dict, main report
+    :param dict2: dict, auxiliary report
+    :return: dict, dict1 with unique pairs from dict2
+    """
+
+    dict1_keys = []
+    dict2_keys = []
+    for key in dict1:
+        dict1_keys.append(key)
+    for key in dict2:
+        dict2_keys.append(key)
+    dict1_first_col = dict1.get(dict1_keys[0])
+    dict2_first_col = dict2.get(dict2_keys[0])
+    pos1 = 0
+    pos2 = 0
+    buffer = 2  # Used on very specific use cases.
+    for key in dict2:
+        if not is_number(key):
+            """Don't look at date key ... "June 30," or similar."""
+            continue
+        elif key in dict1:
+            """Year is already included in dict1"""
+            continue
+        else:
+            """Never before seen year. Edit dict2 array to match dict1 before putting pair in dict1.
+            Compare elements in column 0 from dict1 with elems in column 0 from dict2."""
+            while pos1 < len(dict1_first_col) and pos2 < len(dict2_first_col) - 1:
+                """Check if strings are exactly the same. dict1 is always right."""
+                if dict1_first_col[pos1].lower() == dict2_first_col[pos2].lower():
+                    pos1 += 1
+                    pos2 += 1
+                elif dict1_first_col[pos1].lower() == dict2_first_col[pos2 + 1].lower():
+                    """Delete value at pos2 in dict2."""
+                    dict2.get(key).pop(pos2)
+                    pos2 += 1
+                elif dict1_first_col[pos1 + 1].lower() == dict2_first_col[pos2].lower():
+                    """Insert "-" at pos2 in dict2."""
+                    dict2.get(key).insert(pos1, "-")
+                    pos1 += 1
+                elif len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2]) > \
+                        len(dict1_first_col[pos1])/2:
+                    """Not similar enough."""
+                    for i in range(1, len(dict1_first_col) - pos1):
+                        """ASSUME that a matching string WILL be found at some index.
+                        Matching defined as: differences being less than half of pivot string.
+                        If matching string is not found, delete pos2 from dict2"""
+                        if len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2]) < \
+                                len(dict1_first_col[pos1+i])/2 - buffer:
+                            """Insert element into dict2 at pos1."""
+                            for j in range(i):
+                                dict2.get(key).insert(pos1, "-")
+                            pos1 += i
+                            break
+                        elif len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i]) < \
+                                len(dict2_first_col[pos2+i])/2 - buffer:
+                            """Delete element from dict2 at pos2."""
+                            for k in range(i):
+                                dict2.get(key).pop(pos2)
+                            pos2 += i
+                            break
+                else:
+                    """Strings are MOSTLY the same."""
+                    pos1 += 1
+                    pos2 += 1
+            dict1[key] = dict2.get(key)
+
+    return dict1
+
+
+def display_combine_statements(dict1, dict2):
     """
     Combine two statements from different reports.
     Check if the lowercase of strings are EXACTLY the same or if strings one index apart are EXACTLY the same.
@@ -743,6 +846,23 @@ def get_all_finances(links):
             continue
 
     return income_combo, balance_combo, cash_flow_combo, equity_combo
+
+
+def cleaning(ticker=""):
+    for file in os.listdir(os.path.abspath(os.path.dirname(__file__)) + "/Companies/" + ticker).__reversed__():
+        if file.endswith(".txt"):
+            split = re.split("-", file)
+            new = open("Companies/" + ticker + "/20" + split[1] + "_10-k.txt", "w")
+            with open("Companies/" + ticker + "/" + file) as f:
+                while True:
+                    line = f.readline()
+                    new.write(line)
+                    # print(line)
+                    if re.search("</DOCUMENT>", line) is None:
+                        continue
+                    else:
+                        # End of html portion is found.
+                        break
 
 
 """

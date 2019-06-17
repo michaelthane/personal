@@ -142,23 +142,36 @@ links = []
 statements = []
 combo = {}
 
-# links.append('Companies/MSFT/msft-10k_20180630.htm')
-# links.append('Companies/MSFT/2017_10-k.html')
-# links.append('Companies/MSFT/2016_10-k.html')
-# links.append('Companies/MSFT/2015_10-k.html')
-# links.append('Companies/MSFT/2014_10-k.html')
-# links.append('Companies/MSFT/2013_10-k.html')
+# new = open("Companies/MSFT/" + "20" + ".txt", "w")
+# with open('Companies/MSFT/newfile.txt') as f:
+#     while True:
+#         line = f.readline()
+#         new.write(line)
+#         print(line)
+#         if re.search("</DOCUMENT>", line) is None:
+#             continue
+#         else:
+#             break
 
-links.append('Companies/WMT/2018_10-k.html')
-links.append('Companies/WMT/2017_10-k.html')
-links.append('Companies/WMT/2016_10-k_aux.html')
+# links.append('Companies/MSFT/2018_10-k.txt')
+# links.append('Companies/MSFT/2017_10-k.txt')
+# links.append('Companies/MSFT/2016_10-k.txt')
+# links.append('Companies/MSFT/2015_10-k.txt')
+# links.append('Companies/MSFT/2014_10-k.txt')
+# links.append('Companies/MSFT/2013_10-k.txt')
+
+# links.append('Companies/WMT/2018_10-k.html')
+# links.append('Companies/WMT/2017_10-k.html')
+# links.append('Companies/WMT/2016_10-k_aux.html')
 # links.append('Companies/MSFT/2015_10-k.html')
 # links.append('Companies/MSFT/2014_10-k.html')
 # links.append('Companies/MSFT/2013_10-k.html')
 
 for link in links:
 
-    # soup = bs4.BeautifulSoup(open(link), 'html.parser')
+
+
+    # soup = bs4.BeautifulSoup(open(link).read(), 'html.parser')
     #
     # for elem in soup.find_all():
     #     print(elem)
