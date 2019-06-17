@@ -616,7 +616,7 @@ def display_combine_statements(dict1, dict2):
 
 def combine_statements_regex(dict1, dict2):
     """
-    EXPERIMENTAL
+    EXPERIMENTAL!!!
     Similar algorithm but using REGEX instead of LCS.
 
     Combine two statements from different reports.
