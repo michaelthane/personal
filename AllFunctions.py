@@ -7,146 +7,129 @@ Description: This library contains any and all functions used throughout this ap
 
 import bs4
 from dateutil.parser import parse
+import errno
 import os
 import pandas as pd
 import re
 import time
+import math
 
 
-# Determine if string is a number
-def is_number(string):
-    """
-    Return whether the string can be interpreted as a number.
-    
-    :param string: str, string to check for number
-    :return: bool
-    """
-    # exclusions = [',', '$', '(', ')']
-    try:
-        # for x in exclusions:
-        float(string.replace(',', '').replace('(', ''))
-        return True
-    except ValueError:
-        return False
+def clean(ticker):
+    path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Companies", ticker)
+    clean_path = os.path.join(path, "Clean")
+    if not os.path.exists(clean_path):
+        try:
+            os.makedirs(clean_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+    for file in os.listdir(path):
+        if file.endswith(".txt"):
+            split = re.split("-", file)
+            new = open(clean_path + "/20" + split[1] + "_10-k.txt", "w")
+            with open(os.path.join(path, file)) as f:
+                while True:
+                    line = f.readline()
+                    new.write(line)
+                    if re.search("</DOCUMENT>", line) is None:
+                        continue
+                    else:
+                        # End of html portion is found.
+                        break
+    return
 
 
-def is_date(string, fuzzy=False):
-    """
-    Return whether the string can be interpreted as a date.
+def get_all_finances(links):
 
-    :param string: str, string to check for date
-    :param fuzzy: bool, ignore unknown tokens in string if True
-    """
-    try:
-        parse(string, fuzzy=fuzzy)
-        return True
+    if len(links) == 0:
+        return
 
-    except ValueError:
-        return False
+    income_statements = []
+    balance_statements = []
+    cash_flow_statements = []
+    equity_statements = []
 
+    income_combo = {}
+    balance_combo = {}
+    cash_flow_combo = {}
+    equity_combo = {}
 
-def get_values(analyzing_value, tags):
-    """
-    Return a list ...
-    Get list of values indicated by analyzing_value.
-    When using is_number(), remove unicode in string.
+    for link in links:
+        # link = bs4.BeautifulSoup(link, 'html.parser')
+        report = create_pages(link)
 
-    :param analyzing_value: 
-    :param tags: 
-    :return: list
-    """
-    return_list = []
-    return_set = set()
-    for elem in tags:
-        correct_row = 0
-        sub_tags = elem.select('td')
-        for data in sub_tags:
-            # Clean string to raw value
-            # Check if the table data text equals the requested value
-            if data.text.strip('\n') == analyzing_value and data.text.strip('\n') not in return_set:
-                correct_row = 1
-                return_list.append(data.text.strip('\n'))
-                return_set.add(data.text.strip('\n'))
-            if is_number(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
-                         .replace(u'\xa0', '')) \
-                    and is_number(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
-                                  .replace(u'\xa0', '')) not in return_set\
-                    and correct_row == 1:
-                return_list.append(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
-                                   .replace(u'\xa0', ''))
-                return_set.add(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
-                                   .replace(u'\xa0', ''))
-    return return_list
+        toc = get_table_of_contents(report)
+        pn = get_page_num(report, toc)
 
+        # Check that pn is net income page
 
-def parse10k(path):
-    """
-    Return a dataframe of values from input file.
-    
-    :param path:  str, file path
-    :return: pandas.DataFrame()
-    """
-    soup = bs4.BeautifulSoup(open(path), 'html.parser')
+        # Assume that pn + 1 is comprehensive income statement
+        # if its not there add 1, 2, 3 respectively instead.
+        pn_income = pn
+        pn_balance = pn + 2
+        pn_cash_flow = pn + 3
+        pn_equity = pn + 4
 
-    attribute_list = soup.select('tr')
+        income_statement = decimate_page(report.get("Page " + str(pn_income)))
+        balance_statement = decimate_page(report.get("Page " + str(pn_balance)))
+        cash_flow_statement = decimate_page(report.get("Page " + str(pn_cash_flow)))
+        equity_statement = decimate_page(report.get("Page " + str(pn_equity)))
 
-    # The strings are hardcoded for this specific company.
-    # Future work must make it possible for ANY company.
-    liabilities      = get_values("Total liabilities", attribute_list)
-    assets           = get_values("Total assets", attribute_list)
-    debt             = get_values("Long-term debt", attribute_list)
-    equity           = get_values("Total stockholders’ equity", attribute_list)
-    dilutedEPS       = get_values("Diluted earnings per share", attribute_list)
-    dividends        = get_values("Common stock cash dividends paid", attribute_list)
-    netIncome        = get_values("Net income", attribute_list)
-    totalRevenue     = get_values("Total revenue", attribute_list)
-    retainedEarnings = get_values("Retained earnings", attribute_list)
+        income_statements.append(income_statement)
+        balance_statements.append(balance_statement)
+        cash_flow_statements.append(cash_flow_statement)
+        equity_statements.append(equity_statement)
 
-    # print(liabilities)
-    # print(assets)
-    # print(debt)
-    # print(equity)
-    # print(dilutedEPS)
-    # print(dividends)
-    # print(netIncome)
-    # print(totalRevenue)
-    # print(retainedEarnings)
-    # print()
-    # pprint(get_values("Year Ended June 30,", attribute_list))
+        # INCOME
+        if len(income_statements) == 2:
+            income_combo = combine_statements(income_statements[0], income_statements[1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(income_combo))
+        elif len(income_statements) > 2:
+            income_combo = combine_statements(income_combo, income_statements[-1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(income_combo))
+        else:
+            continue
 
-    list_of_lists = [liabilities,
-                     assets,
-                     debt,
-                     equity,
-                     dilutedEPS,
-                     dividends,
-                     netIncome,
-                     totalRevenue,
-                     retainedEarnings]
+        # BALANCE
+        if len(balance_statements) == 2:
+            balance_combo = combine_statements(balance_statements[0], balance_statements[1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(balance_combo))
+        elif len(balance_statements) > 2:
+            balance_combo = combine_statements(balance_combo, balance_statements[-1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(balance_combo))
+        else:
+            continue
 
-    # Find finance that has the most elements.
-    longest_len = 0
-    for thisList in list_of_lists:
-        if len(thisList[1:]) > longest_len:
-            longest_len = len(thisList[1:])
+        # CASH FLOW
+        if len(cash_flow_statements) == 2:
+            cash_flow_combo = combine_statements(cash_flow_statements[0], cash_flow_statements[1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(cash_flow_combo))
+        elif len(cash_flow_statements) > 2:
+            cash_flow_combo = combine_statements(cash_flow_combo, cash_flow_statements[-1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(cash_flow_combo))
+        else:
+            continue
 
-    # Add zeros for finances that have less than the max.
-    for thisList in list_of_lists:
-        if len(thisList[1:]) < longest_len:
-            for i in range(longest_len - len(thisList[1:])):
-                thisList.append(0)
+        # EQUITY
+        if len(equity_statements) == 2:
+            equity_combo = combine_statements(equity_statements[0], equity_statements[1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(equity_combo))
+        elif len(equity_statements) > 2:
+            equity_combo = combine_statements(equity_combo, equity_statements[-1])
+            # print("\n" + "COMBO COMING" + "\n")
+            # print(af.dict_to_df(equity_combo))
+        else:
+            continue
 
-    value_dict = {}
-    for thisList in list_of_lists:
-        value_dict[thisList[0]] = thisList[1:]
-
-    # print(value_dict)
-
-    df = pd.DataFrame(data=value_dict)
-
-    pd.set_option('display.max_columns', 20)
-
-    return df
+    return income_combo, balance_combo, cash_flow_combo, equity_combo
 
 
 def create_pages(path):
@@ -193,9 +176,7 @@ def create_pages(path):
                     page_num += 1
         else:
             for line in file.find_all():
-                # print(line)
                 line = str(line)
-                # print(line)
                 tags += line
                 # If line starts with "<hr " (horizontal row), store string and go to next page.
                 # if re.search("<p Style='page-break-before:always'>", line, flags=re.IGNORECASE) is not None:
@@ -258,6 +239,23 @@ def get_table_of_contents(pages):
     return table_of_contents
 
 
+# Determine if string is a number
+def is_number(string):
+    """
+    Return whether the string can be interpreted as a number.
+
+    :param string: str, string to check for number
+    :return: bool
+    """
+    # exclusions = [',', '$', '(', ')']
+    try:
+        # for x in exclusions:
+        float(string.replace(',', '').replace('(', ''))
+        return True
+    except ValueError:
+        return False
+
+
 def get_page_num(report, toc):
     correct_page = False
     max_check = 10
@@ -265,6 +263,8 @@ def get_page_num(report, toc):
     for key in toc:
         if re.search("Item 8", key, flags=re.IGNORECASE) or \
                 re.search("statements of income", key, flags=re.IGNORECASE) or \
+                re.search("statement of income", key, flags=re.IGNORECASE) or \
+                re.search("income statements", key, flags=re.IGNORECASE) or \
                 re.search("income statement", key, flags=re.IGNORECASE):
             page_num = toc.get(key)
             break
@@ -276,9 +276,11 @@ def get_page_num(report, toc):
         for elem in soup.stripped_strings:
             # See if this is the right page.
             if current < max_check:
-                #
-                if re.search("Item 8", elem, flags=re.IGNORECASE) is not None or \
-                        re.search("income", elem, flags=re.IGNORECASE) is not None:
+                # re.search("Item 8", elem, flags=re.IGNORECASE) is not None or \
+                if re.search("income statement", elem, flags=re.IGNORECASE) is not None or \
+                        re.search("income statements", elem, flags=re.IGNORECASE) is not None or \
+                        re.search("statement of income", elem, flags=re.IGNORECASE) is not None or \
+                        re.search("statements of income", elem, flags=re.IGNORECASE) is not None:
                     correct_page = True
                     break
             else:
@@ -290,18 +292,67 @@ def get_page_num(report, toc):
     return page_num
 
 
-def dict_to_df(dictionary, transpose=False):
-    """
-    Return the given dictionary as a DataFrame.
+def get_page_nums(report, toc):
+    correct_page = False
+    max_check = 10
+    page_num = 0
+    pn_income = 0
+    pn_balance = 0
+    pn_cash_flow = 0
+    pn_equity = 0
+    page_nums = []
 
-    :param dictionary: dict
-    :param transpose: bool
-    :return: pd.DataFrame()
-    """
-    return pd.DataFrame(data=dictionary, index=[0]).T if transpose else pd.DataFrame(data=dictionary)
+    # page_nums = {"Income Statement": 0, "pn income": 0, "pn income": 0, "pn income": 0}
+
+    income_syns = ["statements of income", "statement of income", "income statements", "income statement"]
+    item8_syns = ["statements of income", "statement of income", "income statements", "income statement", "item 8"]
+    balance_syns = ["balance", "balances", "balance sheet", "balance sheets"]
+    cash_flow_syns = ["cash flow", "cash", "flow", "cash flows", "flows"]
+    equity_syns = ["equity", "stockholder", "stockholders", "stockholders'", "stockholder equity",
+                   "stockholders equity", "stockholders' equity"]
+    syns_list = [income_syns, balance_syns, cash_flow_syns, equity_syns]
 
 
-# Return a dataframe of the financial data at file path.
+    for key in toc:
+        for word in item8_syns:
+            if re.search(word, key, flags=re.IGNORECASE) is not None:
+                correct_page = True
+                page_num = toc.get(key)
+                break
+        if correct_page:
+            break
+
+    page_num -= 2
+
+    for syns in syns_list:
+        for i in range(max_check):
+            correct_page = False
+            current = 0
+            page_num += 1
+            soup = bs4.BeautifulSoup(report.get("Page " + str(page_num)), 'html.parser')
+            for elem in soup.stripped_strings:
+                # See if this is the right page.
+                if current < max_check:
+                    for word in syns:
+                        if re.search(word, elem, flags=re.IGNORECASE) is not None:
+                            correct_page = True
+                            break
+                else:
+                    break
+                if correct_page:
+                    break
+                current += 1
+            if correct_page:
+                break
+        if correct_page:
+            page_nums.append(page_num)
+        else:
+            page_nums.append(-1)
+
+    return page_nums
+
+
+# Return a dictionary of the financial data at file path.
 # Probably call this separately for table...
 def decimate_page(path):
 
@@ -323,13 +374,14 @@ def decimate_page(path):
     table = {}
     col_names = []
     skips = 0
+    token = 0
 
     # list of strings to be excluded
     # DO NOT DELETE "ITEM 8."; It is a special string with &nbsp; hidden in it.
     exclusions = ["millions", "PART II", "item", "FINANCIAL", "statement"]
     # exclusions = ["millions", "PART II", "Item 8", "ITEM 8.", "item", "FINANCIAL", "ITEM 8. FINANCIAL STATE"]
     for elem in soup.stripped_strings:
-
+        # print("|" + elem + "|")
         # Prevent document from repeating...
         if len(col_names) > 0 and elem == col_names[0]:
             break
@@ -364,8 +416,11 @@ def decimate_page(path):
             #     col_names.append(elem)
             #     num_cols += 1
             #     pos += 1
-        elif elem == "$" or elem == ")" or re.search("millions", elem, flags=re.IGNORECASE) is not None:
+        elif elem == "$" or elem == ")" or elem == "–" or elem == "—" or re.search("millions", elem, flags=re.IGNORECASE) is not None:
             # How to not hard-code these exclusions?
+            continue
+        elif elem == "(":
+            token += 1
             continue
         elif is_number(elem) and pos < num_cols + 1:
             # elem should be years like '2018' or '2017' or similar.
@@ -417,6 +472,9 @@ def decimate_page(path):
             # Put financial value in appropriate position.
             if elem[0] == "(":
                 elem += ")"
+            if token > 0:
+                elem = "(" + elem + ")"
+                token -= 1
             table.get(col_names[pos % num_cols]).append(elem)
             pos += 1
 
@@ -427,6 +485,21 @@ def decimate_page(path):
                 table.get(col_names[i]).append("-")
 
     return table
+
+
+def is_date(string, fuzzy=False):
+    """
+    Return whether the string can be interpreted as a date.
+
+    :param string: str, string to check for date
+    :param fuzzy: bool, ignore unknown tokens in string if True
+    """
+    try:
+        parse(string, fuzzy=fuzzy)
+        return True
+
+    except ValueError:
+        return False
 
 
 def combine_statements(dict1, dict2):
@@ -486,7 +559,7 @@ def combine_statements(dict1, dict2):
                                 len(dict1_first_col[pos1+i])/2 - buffer:
                             """Insert element into dict2 at pos1."""
                             for j in range(i):
-                                dict2.get(key).insert(pos1, "-")
+                                dict2.get(key).insert(pos2, "-")
                             pos1 += i
                             break
                         elif len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i]) < \
@@ -503,6 +576,54 @@ def combine_statements(dict1, dict2):
             dict1[key] = dict2.get(key)
 
     return dict1
+
+
+def lcs(s1, s2):
+    """
+    Longest Common Sub-sequence (DP) from GeeksforGeeks
+
+    :param s1: str
+    :param s2: str
+    :return: int, length of longest common sub-sequence
+    """
+    s1 = s1.lower()
+    s2 = s2.lower()
+    # find the length of the strings
+    m = len(s1)
+    n = len(s2)
+
+    # declaring the array for storing the dp values
+    grid = [[0] * (n + 1) for i in range(m + 1)]
+
+    """Following steps build grid[m+1][n+1] in bottom up fashion 
+    Note: grid[i][j] contains length of LCS of s1[0..i-1] 
+    and s2[0..j-1]"""
+    for i in range(m + 1):
+        for j in range(n + 1):
+            if i == 0 or j == 0:
+                grid[i][j] = 0
+            elif s1[i - 1] == s2[j - 1]:
+                grid[i][j] = grid[i - 1][j - 1] + 1
+            else:
+                grid[i][j] = max(grid[i - 1][j], grid[i][j - 1])
+
+                # grid[m][n] contains the length of LCS of s1[0..n-1] & s2[0..m-1]
+    return grid[m][n]
+
+
+def dict_to_df(dictionary, transpose=False):
+    """
+    Return the given dictionary as a DataFrame.
+
+    :param dictionary: dict
+    :param transpose: bool
+    :return: pd.DataFrame()
+    """
+    try:
+        # df = pd.DataFrame(data=dictionary, index=[0]).T if transpose else pd.DataFrame(data=dictionary)
+        return pd.DataFrame(data=dictionary, index=[0]).T if transpose else pd.DataFrame(data=dictionary)
+    except TypeError:
+        return "empty"
 
 
 def display_combine_statements(dict1, dict2):
@@ -527,7 +648,7 @@ def display_combine_statements(dict1, dict2):
     dict2_first_col = dict2.get(dict2_keys[0])
     pos1 = 0
     pos2 = 0
-    buffer = 2  # Used on very specific use cases.
+    buffer = 1  # Used on very specific use cases.
     for key in dict2:
         if not is_number(key):
             """Don't look at date key ... "June 30," or similar."""
@@ -539,8 +660,12 @@ def display_combine_statements(dict1, dict2):
             """Never before seen year. Edit dict2 array to match dict1 before putting pair in dict1.
             Compare elements in column 0 from dict1 with elems in column 0 from dict2."""
             # print("key: " + key)
-            while pos1 < len(dict1_first_col) and pos2 < len(dict2_first_col) - 1:
+            while pos1 < len(dict1_first_col) - 1 and pos2 < len(dict2_first_col) - 1:
                 """Check if strings are exactly the same. dict1 is always right."""
+                print("-----------------------------------------------------------------------------------------------")
+                print(dict2_first_col)
+                print()
+                print(dict2.get(key))
                 print()
                 print("length of dict1: " + str(len(dict1_first_col)))
                 print("length of dict2 col 0: " + str(len(dict2_first_col)))
@@ -548,68 +673,256 @@ def display_combine_statements(dict1, dict2):
                 print("pos1: " + str(pos1) + " | " + "pos2: " + str(pos2))
                 print(dict1_first_col[pos1] + "|vs|" + dict2_first_col[pos2])
                 print("difference: " +
-                      str(len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2])))
-                print("half of dict1: " + str(len(dict1_first_col[pos1]) / 2))
+                      str(len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2]) + buffer))
+                print("half of dict1: " + str(math.ceil(len(dict1_first_col[pos1]) / 2)))
                 print("different? " + str(len(dict1_first_col[pos1]) -
-                                          lcs(dict1_first_col[pos1], dict2_first_col[pos2]) >
+                                          lcs(dict1_first_col[pos1], dict2_first_col[pos2]) + buffer >
                                           len(dict1_first_col[pos1]) / 2))
                 if dict1_first_col[pos1].lower() == dict2_first_col[pos2].lower():
-                    print("Strings are EXACTLY equal.")
-                    pos1 += 1
-                    pos2 += 1
+
+                    """Strings are MOSTLY the same."""
+                    print("pos1: " + str(pos1))
+                    print("pos2: " + str(pos2))
+                    print("dict1 of mostly the same: " + dict1.get(dict1_keys[1])[pos1])
+                    print("dict2 of mostly the same: " + dict2.get(dict2_keys[1])[pos2])
+                    if re.search("-", dict1.get(dict1_keys[1])[pos1]) is not None and \
+                            re.search("-", dict2.get(key)[pos2]) is None:
+                        print("EXACTLY Different in essence.")
+                        for m in range(1, len(dict1_first_col)):
+                            # if dict1_keys[m] == dict2_keys[pos]
+                            if len(dict1_first_col[pos1 + m]) - lcs(dict1_first_col[pos1 + m], dict2_first_col[pos2]) < \
+                                    len(dict1_first_col[pos1 + m]) / 2 - buffer:
+                                break
+                        for i in range(m):
+                            dict2_first_col.insert(pos2, "-")
+                            for tempkey6 in dict2:
+                                if not is_number(tempkey6):
+                                    continue
+                                else:
+                                    dict2.get(tempkey6).insert(pos2, "-")
+                        pos2 += m + 1
+                        pos1 += m + 1
+                    else:
+                        print("Strings are EXACTLY equal.")
+                        # print("longest common subsequence of the two strings is ALMOST as long as dict[i]")
+                        pos1 += 1
+                        pos2 += 1
+                    # if re.search("-", dict1.get(dict1_keys[1])[pos1]) is not None and \
+                    #         re.search("-", dict2.get(key)[pos2]) is None:
+                    #     print("pos1: " + str(pos1))
+                    #     print("pos2: " + str(pos2))
+                    #     print("dict1 of mostly the same: " + dict1.get(dict1_keys[1])[pos1])
+                    #     print("dict2 of mostly the same: " + dict2.get(dict2_keys[1])[pos2])
+                    #     print("EXACTLY Different in essence.")
+                    #     pos1 += 1
+                    # else:
+                    #     print("Strings are EXACTLY equal.")
+                    #     pos1 += 1
+                    #     pos2 += 1
                 elif dict1_first_col[pos1].lower() == dict2_first_col[pos2 + 1].lower():
                     """Delete value at pos2 in dict2."""
                     print("dict1[i] equals dict2[i+1]")
                     print("pop: " + str(pos2))
-                    dict2.get(key).pop(pos2)
-                    pos2 += 1
-                elif dict1_first_col[pos1 + 1].lower() == dict2_first_col[pos2].lower():
+                    for tempkey1 in dict2:
+                        if not is_number(tempkey1):
+                            continue
+                        else:
+                            dict2.get(tempkey1).pop(pos2)
+                            #dict2.get(tempkey1).insert(pos2, "-")
+                    dict2_first_col.pop(pos2)
+                    #dict2_first_col.insert(pos2, "-")
+                    #pos2 += 1
+                elif dict1_first_col[pos1 + 1].lower() == dict2_first_col[pos2].lower() or \
+                        re.match(dict1_first_col[pos1 + 1].lower(), dict2_first_col[pos2].lower()):
                     """Insert "-" at pos2 in dict2."""
                     print("dict1[i+1] equals dict2[i]")
                     print('inserting "-" at ' + str(pos2) + ' in dict2')
-                    dict2.get(key).insert(pos1, "-")
+                    for tempkey2 in dict2:
+                        if not is_number(tempkey2):
+                            continue
+                        else:
+                            dict2.get(tempkey2).insert(pos1, "-")
+                    dict2_first_col.insert(pos1, "-")
+                    pos2 += 1
                     pos1 += 1
-                elif len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2]) > \
-                        len(dict1_first_col[pos1])/2:
+                elif dict1_first_col[pos1].lower() == dict2_first_col[pos2 + 2].lower():
+                    """Delete value at pos2 in dict2."""
+                    print("dict1[i] equals dict2[i+2]")
+                    print("TWICE pop: " + str(pos2))
+                    for i in range(2):
+                        for tempkey1 in dict2:
+                            if not is_number(tempkey1):
+                                continue
+                            else:
+                                dict2.get(tempkey1).pop(pos2)
+                                #dict2.get(tempkey1).insert(pos2, "-")
+                        dict2_first_col.pop(pos2)
+                    #dict2_first_col.insert(pos2, "-")
+                    pos2 += 0
+                    pos1 += 0
+                elif dict1_first_col[pos1 + 2].lower() == dict2_first_col[pos2].lower():
+                    """Insert "-" at pos2 in dict2."""
+                    print("dict1[i+2] equals dict2[i]")
+                    print('TWICE inserting "-" at ' + str(pos2) + ' in dict2')
+                    for i in range(2):
+                        for tempkey2 in dict2:
+                            if not is_number(tempkey2):
+                                continue
+                            else:
+                                dict2.get(tempkey2).insert(pos1, "-")
+                        dict2_first_col.insert(pos1, "-")
+                    pos2 += 2
+                    pos1 += 2
+                elif (re.search("impairment", dict1_first_col[pos1], flags=re.IGNORECASE) is not None and
+                      re.search("impairment", dict2_first_col[pos2], flags=re.IGNORECASE) is not None) or \
+                     (re.search("other income", dict1_first_col[pos1], flags=re.IGNORECASE) is not None and
+                      re.search("other income", dict2_first_col[pos2], flags=re.IGNORECASE) is not None) or \
+                     (re.search("other, net", dict1_first_col[pos1], flags=re.IGNORECASE) is not None and
+                      re.search("other", dict2_first_col[pos2], flags=re.IGNORECASE) is not None):
+                    print("I HATE HARD CODING")
+                    pos1 += 1
+                    pos2 += 1
+                elif (re.search("impairment", dict1_first_col[pos1], flags=re.IGNORECASE) is not None and
+                      re.search("operating expense", dict2_first_col[pos2], flags=re.IGNORECASE) is not None) or \
+                     (re.search("impairment", dict1_first_col[pos1], flags=re.IGNORECASE) is not None and
+                      re.search("severance", dict2_first_col[pos2], flags=re.IGNORECASE) is not None):
+                    dict2_first_col.pop(pos2)
+                    dict2_first_col.insert(pos2, "-")
+                    for tempkey7 in dict2:
+                        if not is_number(tempkey7):
+                            continue
+                        else:
+                            dict2.get(tempkey7).pop(pos2)
+                            dict2.get(tempkey7).insert(pos2, "-")
+                    pos2 += 1
+                    pos1 += 1
+                elif (re.search("earnings", dict1_first_col[pos1], flags=re.IGNORECASE) is not None and
+                      re.search("deficit", dict2_first_col[pos2], flags=re.IGNORECASE) is not None):
+                    for tempkey8 in dict2:
+                        if not is_number(tempkey8):
+                            continue
+                        else:
+                            dict2.get(tempkey8).insert(pos2, "-")
+                    dict2_first_col.insert(pos2, "-")
+                # elif re.search(dict2_first_col[pos2], dict1_first_col[pos1]) is not None:
+                #     print("FMLLLLLLL")
+                #     pos1 += 1
+                    pos2 += 1
+                    pos1 += 1
+                elif len(dict1_first_col[pos1]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2]) + buffer > \
+                        math.ceil(len(dict1_first_col[pos1])/2):
                     """Not similar enough."""
                     print("Not similar enough")
                     # try:
+                    over = 0
                     for i in range(1, len(dict1_first_col) - pos1):
                         """ASSUME that a matching string WILL be found at some index.
                         Matching defined as: differences being less than half of pivot string.
                         If matching string is not found, delete pos2 from dict2"""
+                        over = i
+                        temp1 = pos1
+                        temp2 = pos2
                         print(i)
                         print("difference 1: " +
                               str(len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2])))
-                        print("half of dict1: " + str(len(dict1_first_col[pos1+i]) / 2))
+                        print(dict1_first_col[pos1+i] + "|vs|" + dict2_first_col[pos2])
+                        print("half of dict1: " + str(len(dict1_first_col[pos1+i]) / 2 - buffer))
                         print("difference 2: " +
                               str(len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i])))
-                        print("half of dict2: " + str(len(dict2_first_col[pos2+i]) / 2))
-
+                        print(dict1_first_col[pos1] + "|vs|" + dict2_first_col[pos2+i])
+                        print("half of dict2: " + str(len(dict2_first_col[pos2+i]) / 2 - buffer))
+                        print()
+                        if (re.search("other comprehensive income", dict1_first_col[pos1+i], flags=re.IGNORECASE) and
+                            re.search("other comprehensive income", dict2_first_col[pos2], flags=re.IGNORECASE)) or \
+                           (re.search("other comprehensive income", dict1_first_col[pos1], flags=re.IGNORECASE) and
+                            re.search("accompanying", dict2_first_col[pos2 + i], flags=re.IGNORECASE)):
+                            continue
                         if len(dict1_first_col[pos1+i]) - lcs(dict1_first_col[pos1+i], dict2_first_col[pos2]) < \
                                 len(dict1_first_col[pos1+i])/2 - buffer:
                             """Insert element into dict2 at pos1."""
+                            print("I AM HEREEEEEEEE")
                             for j in range(i):
-                                dict2.get(key).insert(pos1, "-")
+                                dict2_first_col.insert(pos1, "-")
+                                for tempkey3 in dict2:
+                                    if not is_number(tempkey3):
+                                        continue
+                                    else:
+                                        dict2.get(tempkey3).insert(pos1, "-")
+                                # dict2_keys.insert(pos1, "-")
+                            pos2 += i
                             pos1 += i
                             break
                         elif len(dict2_first_col[pos2+i]) - lcs(dict1_first_col[pos1], dict2_first_col[pos2+i]) < \
                                 len(dict2_first_col[pos2+i])/2 - buffer:
                             """Delete element from dict2 at pos2."""
                             for k in range(i):
-                                dict2.get(key).pop(pos2)
-                            pos2 += i
+                                dict2_first_col.pop(pos2)
+                                dict2_first_col.append("-")
+                                for tempkey4 in dict2:
+                                    if not is_number(tempkey4):
+                                        continue
+                                    else:
+                                        dict2.get(tempkey4).pop(pos2)
+                                        dict2.get(tempkey4).append("-")
+                            # pos2 += i
                             break
+                    print("over: " + str(over))
+                    print("fuck!!! " + str(len(dict1_first_col) - temp1 - 1))
+                    if over >= len(dict1_first_col) - temp1 - 1:
+                        dict2_first_col.pop(pos2)
+                        dict2_first_col.insert(pos2, "-")
+                        for tempkey9 in dict2:
+                            if not is_number(tempkey9):
+                                continue
+                            else:
+                                dict2.get(tempkey9).pop(pos2)
+                                dict2.get(tempkey9).insert(pos2, "-")
+                        pos2 += 1
+                        pos1 += 1
+
                     # except IndexError:
                     #     # print("lolololol")
                     #     dict2.get(key).insert(pos2, "-")
                     #     pos2 += 1
                 else:
                     """Strings are MOSTLY the same."""
-                    print("longest common subsequence of the two strings is ALMOST as long as dict[i]")
-                    pos1 += 1
-                    pos2 += 1
-            dict1[key] = dict2.get(key)
+                    print("pos1: " + str(pos1))
+                    print("pos2: " + str(pos2))
+                    print("dict1 of mostly the same: " + dict1.get(dict1_keys[1])[pos1])
+                    print("dict2 of mostly the same: " + dict2.get(dict2_keys[1])[pos2])
+                    if re.search("-", dict1.get(dict1_keys[1])[pos1]) is not None and \
+                            re.search("-", dict2.get(key)[pos2]) is None:
+                        print("MOSTLY Different in essence.")
+
+                        for m in range(1, len(dict1_first_col)):
+                            # if dict1_keys[m] == dict2_keys[pos]
+                            print("diff: " + str(
+                                len(dict1_first_col[pos1 + m]) - lcs(dict1_first_col[pos1 + m], dict2_first_col[pos2])))
+                            print("half: " + str(len(dict1_first_col[pos1 + m]) / 2))
+                            if len(dict1_first_col[pos1 + m]) - lcs(dict1_first_col[pos1 + m], dict2_first_col[pos2]) < \
+                               len(dict1_first_col[pos1 + m]) / 2:
+                                break
+                        for i in range(m):
+                            dict2_first_col.insert(pos2, "-")
+                            for tempkey5 in dict2:
+                                if not is_number(tempkey5):
+                                    continue
+                                else:
+                                    dict2.get(tempkey5).insert(pos2, "-")
+                        pos2 += m + 1
+                        pos1 += m + 1
+                    else:
+                        print("longest common subsequence of the two strings is ALMOST as long as dict[i]")
+                        pos1 += 1
+                        pos2 += 1
+            for key2 in dict2:
+                if not is_number(key2) or key2 in dict1:
+                    continue
+                else:
+                    for x in range(len(dict2.get(key2)) - len(dict1_first_col)):
+                        dict2_first_col.pop(-1)
+                        dict2.get(key2).pop(-1)
+                    dict1[key2] = dict2.get(key2)
 
     return dict1
 
@@ -726,143 +1039,108 @@ def combine_statements_regex(dict1, dict2):
     return dict1
 
 
-def lcs(s1, s2):
+def parse10k(path):
     """
-    Longest Common Sub-sequence (DP) from GeeksforGeeks
-
-    :param s1: str
-    :param s2: str
-    :return: int, length of longest common sub-sequence
+    Return a dataframe of values from input file.
+    
+    :param path:  str, file path
+    :return: pandas.DataFrame()
     """
-    s1 = s1.lower()
-    s2 = s2.lower()
-    # find the length of the strings
-    m = len(s1)
-    n = len(s2)
+    soup = bs4.BeautifulSoup(open(path), 'html.parser')
 
-    # declaring the array for storing the dp values
-    grid = [[0] * (n + 1) for i in range(m + 1)]
+    attribute_list = soup.select('tr')
 
-    """Following steps build grid[m+1][n+1] in bottom up fashion 
-    Note: grid[i][j] contains length of LCS of s1[0..i-1] 
-    and s2[0..j-1]"""
-    for i in range(m + 1):
-        for j in range(n + 1):
-            if i == 0 or j == 0:
-                grid[i][j] = 0
-            elif s1[i - 1] == s2[j - 1]:
-                grid[i][j] = grid[i - 1][j - 1] + 1
-            else:
-                grid[i][j] = max(grid[i - 1][j], grid[i][j - 1])
+    # The strings are hardcoded for this specific company.
+    # Future work must make it possible for ANY company.
+    liabilities      = get_values("Total liabilities", attribute_list)
+    assets           = get_values("Total assets", attribute_list)
+    debt             = get_values("Long-term debt", attribute_list)
+    equity           = get_values("Total stockholders’ equity", attribute_list)
+    dilutedEPS       = get_values("Diluted earnings per share", attribute_list)
+    dividends        = get_values("Common stock cash dividends paid", attribute_list)
+    netIncome        = get_values("Net income", attribute_list)
+    totalRevenue     = get_values("Total revenue", attribute_list)
+    retainedEarnings = get_values("Retained earnings", attribute_list)
 
-                # grid[m][n] contains the length of LCS of s1[0..n-1] & s2[0..m-1]
-    return grid[m][n]
+    # print(liabilities)
+    # print(assets)
+    # print(debt)
+    # print(equity)
+    # print(dilutedEPS)
+    # print(dividends)
+    # print(netIncome)
+    # print(totalRevenue)
+    # print(retainedEarnings)
+    # print()
+    # pprint(get_values("Year Ended June 30,", attribute_list))
 
+    list_of_lists = [liabilities,
+                     assets,
+                     debt,
+                     equity,
+                     dilutedEPS,
+                     dividends,
+                     netIncome,
+                     totalRevenue,
+                     retainedEarnings]
 
-def get_all_finances(links):
+    # Find finance that has the most elements.
+    longest_len = 0
+    for thisList in list_of_lists:
+        if len(thisList[1:]) > longest_len:
+            longest_len = len(thisList[1:])
 
-    income_statements = []
-    balance_statements = []
-    cash_flow_statements = []
-    equity_statements = []
+    # Add zeros for finances that have less than the max.
+    for thisList in list_of_lists:
+        if len(thisList[1:]) < longest_len:
+            for i in range(longest_len - len(thisList[1:])):
+                thisList.append(0)
 
-    income_combo = {}
-    balance_combo = {}
-    cash_flow_combo = {}
-    equity_combo = {}
+    value_dict = {}
+    for thisList in list_of_lists:
+        value_dict[thisList[0]] = thisList[1:]
 
-    for link in links:
-        # link = bs4.BeautifulSoup(link, 'html.parser')
-        report = create_pages(link)
+    # print(value_dict)
 
-        toc = get_table_of_contents(report)
-        pn = get_page_num(report, toc)
+    df = pd.DataFrame(data=value_dict)
 
-        # Check that pn is net income page
+    pd.set_option('display.max_columns', 20)
 
-        # Assume that pn + 1 is comprehensive income statement
-        # if its not there add 1, 2, 3 respectively instead.
-        pn_income = pn
-        pn_balance = pn + 2
-        pn_cash_flow = pn + 3
-        pn_equity = pn + 4
-
-        income_statement = decimate_page(report.get("Page " + str(pn_income)))
-        balance_statement = decimate_page(report.get("Page " + str(pn_balance)))
-        cash_flow_statement = decimate_page(report.get("Page " + str(pn_cash_flow)))
-        equity_statement = decimate_page(report.get("Page " + str(pn_equity)))
-
-        income_statements.append(income_statement)
-        balance_statements.append(balance_statement)
-        cash_flow_statements.append(cash_flow_statement)
-        equity_statements.append(equity_statement)
-
-        # INCOME
-        if len(income_statements) == 2:
-            income_combo = combine_statements(income_statements[0], income_statements[1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(income_combo))
-        elif len(income_statements) > 2:
-            income_combo = combine_statements(income_combo, income_statements[-1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(income_combo))
-        else:
-            continue
-
-        # BALANCE
-        if len(balance_statements) == 2:
-            balance_combo = combine_statements(balance_statements[0], balance_statements[1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(balance_combo))
-        elif len(balance_statements) > 2:
-            balance_combo = combine_statements(balance_combo, balance_statements[-1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(balance_combo))
-        else:
-            continue
-
-        # CASH FLOW
-        if len(cash_flow_statements) == 2:
-            cash_flow_combo = combine_statements(cash_flow_statements[0], cash_flow_statements[1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(cash_flow_combo))
-        elif len(cash_flow_statements) > 2:
-            cash_flow_combo = combine_statements(cash_flow_combo, cash_flow_statements[-1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(cash_flow_combo))
-        else:
-            continue
-
-        # EQUITY
-        if len(equity_statements) == 2:
-            equity_combo = combine_statements(equity_statements[0], equity_statements[1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(equity_combo))
-        elif len(equity_statements) > 2:
-            equity_combo = combine_statements(equity_combo, equity_statements[-1])
-            # print("\n" + "COMBO COMING" + "\n")
-            # print(af.dict_to_df(equity_combo))
-        else:
-            continue
-
-    return income_combo, balance_combo, cash_flow_combo, equity_combo
+    return df
 
 
-def cleaning(ticker=""):
-    for file in os.listdir(os.path.abspath(os.path.dirname(__file__)) + "/Companies/" + ticker).__reversed__():
-        if file.endswith(".txt"):
-            split = re.split("-", file)
-            new = open("Companies/" + ticker + "/20" + split[1] + "_10-k.txt", "w")
-            with open("Companies/" + ticker + "/" + file) as f:
-                while True:
-                    line = f.readline()
-                    new.write(line)
-                    # print(line)
-                    if re.search("</DOCUMENT>", line) is None:
-                        continue
-                    else:
-                        # End of html portion is found.
-                        break
+def get_values(analyzing_value, tags):
+    """
+    Return a list ...
+    Get list of values indicated by analyzing_value.
+    When using is_number(), remove unicode in string.
+
+    :param analyzing_value:
+    :param tags:
+    :return: list
+    """
+    return_list = []
+    return_set = set()
+    for elem in tags:
+        correct_row = 0
+        sub_tags = elem.select('td')
+        for data in sub_tags:
+            # Clean string to raw value
+            # Check if the table data text equals the requested value
+            if data.text.strip('\n') == analyzing_value and data.text.strip('\n') not in return_set:
+                correct_row = 1
+                return_list.append(data.text.strip('\n'))
+                return_set.add(data.text.strip('\n'))
+            if is_number(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
+                         .replace(u'\xa0', '')) \
+                    and is_number(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
+                                  .replace(u'\xa0', '')) not in return_set\
+                    and correct_row == 1:
+                return_list.append(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
+                                   .replace(u'\xa0', ''))
+                return_set.add(data.text.strip('\n').replace(',', '').replace('(', '').replace(')', '')
+                                   .replace(u'\xa0', ''))
+    return return_list
 
 
 """

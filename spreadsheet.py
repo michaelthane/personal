@@ -13,7 +13,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name('secret_key.json', scop
 client = gspread.authorize(creds)
 
 # Create new spreadsheets only if they do not exist. Otherwise, open it.
-spreadsheetName = "MSFT - Microsoft Corporation"
+spreadsheetName = "companyX"
 try:
     print('NICE!!!')
     sh = client.open(spreadsheetName)
