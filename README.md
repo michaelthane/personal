@@ -31,7 +31,7 @@ defensive investor's portfolio:
     - Value of company can also come from franchises, brand name, patents, trademarks
     - 2.5 is a good max limit
 
-7. Price no more than 15x average EPS of the past 3 years
+7. Price no more than 15x (25x) average EPS of the past 3 years
     - (P/E) * (P/B) < 22.5 -> a good initial screen
 
 The above requirements exclude companies that are:

@@ -51,7 +51,7 @@ except gspread.exceptions.APIError:
 finally:
     print("No errors.")
 
-df = af.parse10k('Companies/MSFT/msft-10k_20170630.htm')
+df = af.parse10k()
 
 spread = gspread_pandas.Spread(json.load(open('secret_key.json'))["client_email"], spreadsheetName,
                                config=json.load(open('secret_key.json')))

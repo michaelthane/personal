@@ -18,25 +18,30 @@ import math
 def clean(ticker):
     path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Companies", ticker)
     clean_path = os.path.join(path, "Clean")
-    if not os.path.exists(clean_path):
-        try:
+    # if not os.path.exists(clean_path):
+    #     try:
+    #         os.makedirs(clean_path)
+    #     except OSError as e:
+    #         if e.errno != errno.EEXIST:
+    #             raise
+    for dir_tuple in os.walk(path, topdown=True):
+        if not os.path.exists(clean_path) and len(dir_tuple[2]) > 0:
             os.makedirs(clean_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise
-    for file in os.listdir(path):
-        if file.endswith(".txt"):
-            split = re.split("-", file)
-            new = open(clean_path + "/20" + split[1] + "_10-k.txt", "w")
-            with open(os.path.join(path, file)) as f:
-                while True:
-                    line = f.readline()
-                    new.write(line)
-                    if re.search("</DOCUMENT>", line) is None:
-                        continue
-                    else:
-                        # End of html portion is found.
-                        break
+            for file in dir_tuple[2]:
+            # for file in os.listdir(path):
+                if file.endswith(".txt"):
+                    split = re.split("-", file)
+                    new = open(clean_path + "/20" + split[1] + "_10-k.txt", "w")
+                    with open(os.path.join(dir_tuple[0], file)) as f:
+                        while True:
+                            line = f.readline()
+                            new.write(line)
+                            if re.search("</DOCUMENT>", line) is None:
+                                continue
+                            else:
+                                # End of html portion is found.
+                                new.close()
+                                break
     return
 
 
@@ -164,29 +169,63 @@ def create_pages(path):
         if not soupy:
             for line in file:
                 # print(line)
-                tags += line
+                # tags += line
                 # If line starts with "<hr " (horizontal row), store string and go to next page.
                 # if line[:4] == "<hr " or line[:16] == '</p><hr size="3"':  # ACTION: This really shouldn't be hard-coded...
                 #     report["Page " + str(page_num)] = tags
                 #     tags = ""
                 #     page_num += 1
+                if re.search("page-break-before", line, flags=re.IGNORECASE) is not None:
+                    split_lines = line.split("page-break-before")
+                    if len(split_lines) <= 2:
+                        for i in range(len(split_lines)):
+                            tags += split_lines[i]
+                        report["Page " + str(page_num)] = tags
+                        tags = ""
+                        page_num += 1
+                    else:
+                        tags += split_lines[0]
+                        report["Page " + str(page_num)] = tags
+                        tags = ""
+                        page_num += 1
+                        for i in range(1, len(split_lines)):
+                            report["Page " + str(page_num)] = split_lines[i]
+                            page_num += 1
+                elif re.search("page-break-after", line, flags=re.IGNORECASE) is not None:
+                    split_lines = line.split("page-break-after")
+                    if len(split_lines) <= 2:
+                        for i in range(len(split_lines)):
+                            tags += split_lines[i]
+                        report["Page " + str(page_num)] = tags
+                        tags = ""
+                        page_num += 1
+                    else:
+                        tags += split_lines[0]
+                        report["Page " + str(page_num)] = tags
+                        tags = ""
+                        page_num += 1
+                        for i in range(1, len(split_lines)):
+                            report["Page " + str(page_num)] = split_lines[i]
+                            page_num += 1
+                else:
+                    tags += line
+            if tags != "":
+                report["Page " + str(page_num)] = tags
+                tags = ""
+                page_num += 1
+        else:
+            for line in file.find_all_next():
+                line = str(line)
+                tags += line
+                # If line starts with "<hr " (horizontal row), store string and go to next page.
                 if re.search("page-break", line, flags=re.IGNORECASE) is not None:
                     report["Page " + str(page_num)] = tags
                     tags = ""
                     page_num += 1
-        else:
-            for line in file.find_all():
-                line = str(line)
-                tags += line
-                # If line starts with "<hr " (horizontal row), store string and go to next page.
-                # if re.search("<p Style='page-break-before:always'>", line, flags=re.IGNORECASE) is not None:
-                #     report["Page " + str(page_num)] = tags
-                #     tags = ""
-                #     page_num += 1
                 # if re.match("<hr width", line, flags=re.IGNORECASE) is not None or \
                 #    re.match('<hr size="1"', line, flags=re.IGNORECASE) is not None:
                 #     continue
-                if re.match("<hr ", line, flags=re.IGNORECASE) is not None:
+                elif re.match("<hr ", line, flags=re.IGNORECASE) is not None:
                     report["Page " + str(page_num)] = tags
                     tags = ""
                     page_num += 1
@@ -201,7 +240,8 @@ def create_pages(path):
         if len(report) > 1:
             break
         else:
-            file = bs4.BeautifulSoup(open(path), 'html.parser')
+            with open(path) as f:
+                file = bs4.BeautifulSoup(f.read(), 'html.parser')
             soupy = True
     return report
 
@@ -223,16 +263,19 @@ def get_table_of_contents(pages):
     chapter = ""
     soup = bs4.BeautifulSoup(pages.get(toc_page_number), 'html.parser')
     prev = 0
+    seen = []
     # If any of the stripped strings equals index or table of contents or the like, store pages and numbers and break
     for elem in soup.stripped_strings:
         elem = elem.replace(u"\xa0", u" ")
         if is_number(elem):
             if int(elem) >= prev:
+            # if int(elem) not in seen:
+                seen.append(int(elem))
                 prev = int(elem)
                 table_of_contents[chapter] = int(elem)
                 chapter = ""
-            else:
-                break
+            # else:
+            #     break
         else:
             chapter += elem + " "
     table_of_contents.popitem()
@@ -294,24 +337,28 @@ def get_page_num(report, toc):
 
 def get_page_nums(report, toc):
     correct_page = False
-    max_check = 10
+    max_lines_check = 6
+    max_pages_check = 15
     page_num = 0
     pn_income = 0
     pn_balance = 0
     pn_cash_flow = 0
     pn_equity = 0
     page_nums = []
+    balance_check = ""
+    max_string_length = 100
 
     # page_nums = {"Income Statement": 0, "pn income": 0, "pn income": 0, "pn income": 0}
 
-    income_syns = ["statements of income", "statement of income", "income statements", "income statement"]
+    income_syns = ["statements of income", "statement of income", "income statements", "income statement",
+                   "statements of operations"]
     item8_syns = ["statements of income", "statement of income", "income statements", "income statement", "item 8"]
-    balance_syns = ["balance", "balances", "balance sheet", "balance sheets"]
-    cash_flow_syns = ["cash flow", "cash", "flow", "cash flows", "flows"]
-    equity_syns = ["equity", "stockholder", "stockholders", "stockholders'", "stockholder equity",
-                   "stockholders equity", "stockholders' equity"]
+    balance_syns = ["balance", "balances", "balances sheet", "balance sheet", "balance sheets"]
+    cash_flow_syns = ["cash flow", "flow", "cash flows", "flows"]
+    equity_syns = ["stockholder", "stockholders", "stockholders'", "stockholder equity",
+                   "stockholders equity", "stockholders' equity", "shareholders' equity",
+                   "shareholder equity", "shareholder"]
     syns_list = [income_syns, balance_syns, cash_flow_syns, equity_syns]
-
 
     for key in toc:
         for word in item8_syns:
@@ -325,16 +372,21 @@ def get_page_nums(report, toc):
     page_num -= 2
 
     for syns in syns_list:
-        for i in range(max_check):
+        # page_num = toc.get(key)
+        for i in range(max_pages_check):
             correct_page = False
             current = 0
             page_num += 1
             soup = bs4.BeautifulSoup(report.get("Page " + str(page_num)), 'html.parser')
             for elem in soup.stripped_strings:
                 # See if this is the right page.
-                if current < max_check:
+                if current < max_lines_check:
+                    # if re.search("balance", elem, flags=re.IGNORECASE) is not None:
+                    #     balance_check += elem + " "
+                    # elif re.search("sheets", elem, flags=re.IGNORECASE) is not None:
+                    #     balance_check += elem
                     for word in syns:
-                        if re.search(word, elem, flags=re.IGNORECASE) is not None:
+                        if re.search(word, elem, flags=re.IGNORECASE) is not None and len(elem) < max_string_length:
                             correct_page = True
                             break
                 else:
@@ -346,8 +398,10 @@ def get_page_nums(report, toc):
                 break
         if correct_page:
             page_nums.append(page_num)
+            page_num -= 5
         else:
             page_nums.append(-1)
+            page_num = toc.get(key)
 
     return page_nums
 
@@ -375,10 +429,11 @@ def decimate_page(path):
     col_names = []
     skips = 0
     token = 0
+    units = ""
 
     # list of strings to be excluded
     # DO NOT DELETE "ITEM 8."; It is a special string with &nbsp; hidden in it.
-    exclusions = ["millions", "PART II", "item", "FINANCIAL", "statement"]
+    exclusions = ["thousand", "million", "PART II", "item", "FINANCIAL", "statement"]
     # exclusions = ["millions", "PART II", "Item 8", "ITEM 8.", "item", "FINANCIAL", "ITEM 8. FINANCIAL STATE"]
     for elem in soup.stripped_strings:
         # print("|" + elem + "|")
@@ -391,6 +446,10 @@ def decimate_page(path):
             for exclude in exclusions:
                 # print(exclude)
                 # print(re.search(exclude, elem, flags=re.IGNORECASE))
+                if re.search("million", elem, flags=re.IGNORECASE) is not None and units == "":
+                    units += "(In millions) "
+                elif re.search("thousand", elem, flags=re.IGNORECASE) is not None and units == "":
+                    units += "(In thousands) "
                 if re.search(exclude, elem, flags=re.IGNORECASE) is not None:
                     # print("skip")
                     skip = True
@@ -401,9 +460,15 @@ def decimate_page(path):
             if skip or not is_date(elem, fuzzy=True):
                 continue
             else:
+                if is_number(elem) and len(table) == 0:
+                    table[units + "Unknown Date"] = []
+                    col_names.append(units + "Unknown Date")
+                    num_cols += 1
+                    pos += 1
+                    units = ""
                 # First elem should be a date like 'June 30' or similar.
-                table[elem] = []  # key = elem : value = list
-                col_names.append(elem)
+                table[units + elem] = []  # key = elem : value = list
+                col_names.append(units + elem)
                 num_cols += 1
                 pos += 1
             # print(elem)
@@ -416,7 +481,7 @@ def decimate_page(path):
             #     col_names.append(elem)
             #     num_cols += 1
             #     pos += 1
-        elif elem == "$" or elem == ")" or elem == "–" or elem == "—" or re.search("millions", elem, flags=re.IGNORECASE) is not None:
+        elif elem == "$" or elem == ")" or elem == "–" or elem == "—" or elem == ";": # or re.search("millions", elem, flags=re.IGNORECASE) is not None:
             # How to not hard-code these exclusions?
             continue
         elif elem == "(":
@@ -451,13 +516,24 @@ def decimate_page(path):
                 table.get(col_names[0])[-1] += " " + elem
         elif not is_number(elem) and pos >= num_cols:
 
+            # Get through junk...
+            if re.match("at", elem, flags=re.IGNORECASE) is not None or \
+               re.search('december', elem, flags=re.IGNORECASE) is not None:
+                continue
+
             # If col_lens hasn't been created yet, create it.
             if len(col_lens) == 0:
                 col_lens = [0] * len(col_names)
 
             # If it is not a number and not in exclusions list, it will ALWAYS go in the first column.
-            table.get(col_names[0]).append(elem)
-
+            # A description could be broken up in the html, so only put strings that HAVE an
+            # uppercase letter into the first col. Otherwise, assume that its part of the previously
+            # entered description.
+            if any(char.isupper() for char in elem):
+                table.get(col_names[0]).append(elem)
+            else:
+                table.get(col_names[0])[-1] += " " + elem
+                continue
             # Update differences in array length.
             for i in range(len(col_names)):
                 col_lens[i] = len(table.get(col_names[0])) - len(table.get(col_names[i]))
@@ -660,7 +736,7 @@ def display_combine_statements(dict1, dict2):
             """Never before seen year. Edit dict2 array to match dict1 before putting pair in dict1.
             Compare elements in column 0 from dict1 with elems in column 0 from dict2."""
             # print("key: " + key)
-            while pos1 < len(dict1_first_col) - 1 and pos2 < len(dict2_first_col) - 1:
+            while pos1 < len(dict1_first_col) - 2 and pos2 < len(dict2_first_col) - 2:
                 """Check if strings are exactly the same. dict1 is always right."""
                 print("-----------------------------------------------------------------------------------------------")
                 print(dict2_first_col)
@@ -919,9 +995,13 @@ def display_combine_statements(dict1, dict2):
                 if not is_number(key2) or key2 in dict1:
                     continue
                 else:
-                    for x in range(len(dict2.get(key2)) - len(dict1_first_col)):
+                    while len(dict2.get(key2)) - len(dict1_first_col) > 0:
+                    # for x in range(len(dict2.get(key2)) - len(dict1_first_col)):
                         dict2_first_col.pop(-1)
                         dict2.get(key2).pop(-1)
+                    while len(dict2.get(key2)) - len(dict1_first_col) < 0:
+                        dict2_first_col.insert(-1, "-")
+                        dict2.get(key2).insert(-1, "-")
                     dict1[key2] = dict2.get(key2)
 
     return dict1
