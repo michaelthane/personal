@@ -18,7 +18,7 @@ links = []
 statements = []
 combo = {}
 
-ticker = "MSFT"
+ticker = "MCD"
 
 if not os.path.exists("Companies/" + ticker + "/Clean"):
     af.clean(ticker)
@@ -63,7 +63,7 @@ for link in links:
     toc = af.get_table_of_contents(report)
     pn = af.get_page_nums(report, toc)
 
-    statement = af.decimate_page(report.get("Page " + str(pn[1])))
+    statement = af.decimate_page(report.get("Page " + str(pn[0])))
     print("\n" + "NEXT STATEMENT" + "\n")
     print(af.dict_to_df(statement))
     statements.append(statement)
@@ -77,7 +77,7 @@ for link in links:
         print(af.dict_to_df(combo))
     else:
         continue
-'''
+
 df = af.dict_to_df(combo)
 print(df)
 print()
@@ -145,14 +145,17 @@ for i in idx:
     if re.search("diluted", df.iloc[i].values[0], flags=re.IGNORECASE):
         if not epsFound:
             new_col = {"EPS " + df.iloc[i].values[0]:
-                       [float(elem.replace(",", "").replace("(", "").replace(")", "").replace("-", "0")) for elem in df.iloc[i].values[1:]]}
+                       [float(elem.replace(",", "").replace("(", "").replace(")", "").replace("-", "0"))
+                        for elem in df.iloc[i].values[1:]]}
             epsFound = True
         else:
             new_col = {"Shares outstanding " + df.iloc[i].values[0]:
-                       [float(elem.replace(",", "").replace("(", "").replace(")", "").replace("-", "0")) for elem in df.iloc[i].values[1:]]}
+                       [float(elem.replace(",", "").replace("(", "").replace(")", "").replace("-", "0"))
+                        for elem in df.iloc[i].values[1:]]}
     else:
         new_col = {df.iloc[i].values[0]:
-                   [float(elem.replace(",", "").replace("(", "").replace(")", "").replace("-", "0")) for elem in df.iloc[i].values[1:]]}
+                   [float(elem.replace(",", "").replace("(", "").replace(")", "").replace("-", "0"))
+                    for elem in df.iloc[i].values[1:]]}
     # Have to make a col_name list because the column in the DF has not actually changed.
     col_name = list(new_col.keys())
     if not all(data == 0 for data in new_col.get(col_name[0])):
@@ -307,7 +310,7 @@ for i in idx:
         newDF[df.iloc[i][0]] = new_col.get(df.iloc[i][0])
 print(newDF)
 print("DONE WITH CASH FLOW" + "\n")
-
+'''
 """Adding equity statement"""
 
 combo.clear()
@@ -383,7 +386,7 @@ print(newDF)
 print("DONE WITH EQUITY" + "\n")
 print(af.dict_to_df(header_map, transpose=True))
 print()
-
+'''
 # Drop columns with all zeros, might never add zero columns
 # print(newDF)
 # del_keys = []
@@ -726,5 +729,5 @@ plt.show()
 # print(af.dict_to_df(all_finances[3]))
 # print()
 # print("Execution time: " + str(time.time() - start))
-'''
+
 
